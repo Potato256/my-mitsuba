@@ -33,6 +33,9 @@ dist
 # Dependencies
 dependencies
 
+# Scenes
+scenes
+
 # OSX binaries and byproducts
 Mitsuba.app
 .DS_Store
