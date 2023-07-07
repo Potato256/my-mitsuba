@@ -6,8 +6,8 @@ plugins += env.SharedLibrary('path', ['path/path.cpp'])
 plugins += env.SharedLibrary('volpath', ['path/volpath.cpp'])
 plugins += env.SharedLibrary('volpath_simple', ['path/volpath_simple.cpp'])
 plugins += env.SharedLibrary('ptracer', ['ptracer/ptracer.cpp', 'ptracer/ptracer_proc.cpp'])
-plugins += env.SharedLibrary('depthIntegrater', ['depth/depth.cpp'])
-
+plugins += env.SharedLibrary('depth', ['depth/depth.cpp'])
+plugins += env.SharedLibrary('myPath', ['myPath/myPath.cpp'])
 
 # Photon mapping-based techniques
 plugins += env.SharedLibrary('photonmapper', ['photonmapper/photonmapper.cpp', 'photonmapper/bre.cpp'])
