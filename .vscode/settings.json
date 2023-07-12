@@ -90,6 +90,9 @@
         "xmemory0": "cpp",
         "xstddef": "cpp",
         "xtr1common": "cpp",
-        "xtree": "cpp"
+        "xtree": "cpp",
+        "filesystem": "cpp",
+        "any": "cpp",
+        "memory_resource": "cpp"
     }
 }

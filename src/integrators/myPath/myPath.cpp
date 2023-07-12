@@ -22,7 +22,7 @@ public:
     /// Initialize the integrator with the specified properties
     myPathIntegrator(const Properties &props) : SamplingIntegrator(props) {
         m_maxDepth = props.getInteger("maxDepth", 50);
-        m_rrDepth = props.getInteger("rrDepth", 3);
+        m_rrDepth = props.getInteger("rrDepth", 0);
 
         m_strategyString = props.getString("strategy", "mis");
         if (m_strategyString == "bsdf")
@@ -88,7 +88,7 @@ public:
         ray.mint = Epsilon;
 
         if (its.isValid() && its.isEmitter())
-            Li += its.Le(-ray.d);
+            return its.Le(-ray.d);
 
         while(rRec.depth <= m_maxDepth || m_maxDepth < 0) {
             if (!its.isValid())
@@ -148,6 +148,7 @@ public:
                         scene->pdfEmitterDirect(dRec) : 0;
                     Float misW = misWeight(bsdfPdf, lumPdf, PathBSDF);
                     Li += throughput * value * misW;
+                    return Li;
                 }
             }
 
@@ -172,5 +173,5 @@ public:
 int myPathIntegrator::m_LiCount = 0;
 
 MTS_IMPLEMENT_CLASS_S(myPathIntegrator, false, SamplingIntegrator)
-MTS_EXPORT_PLUGIN(myPathIntegrator, "A depth integrator");
+MTS_EXPORT_PLUGIN(myPathIntegrator, "My path integrator");
 MTS_NAMESPACE_END
