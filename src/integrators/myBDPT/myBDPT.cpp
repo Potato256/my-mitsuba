@@ -8,19 +8,19 @@ public:
     MTS_DECLARE_CLASS()
 
 private:
-    int m_maxDepth;
     int m_maxDepthEye;
     int m_maxDepthLight;
-    int m_rrDepth;
+    Float m_rrEye;
+    Float m_rrLight;
     static int m_LiCount;
 
 public:
     /// Initialize the integrator with the specified properties
     myBDPTIntegrator(const Properties &props) : SamplingIntegrator(props) {
-        m_maxDepth = props.getInteger("maxDepth", 50);
-        m_maxDepthEye = props.getInteger("maxDepthForEye", 50);
-        m_maxDepthLight = props.getInteger("maxDepthForLight", 0);
-        m_rrDepth = props.getInteger("rrDepth", 0);
+        m_maxDepthEye = props.getInteger("maxDepthForEye", 20);
+        m_maxDepthLight = props.getInteger("maxDepthForLight", 20);
+        m_rrEye = props.getFloat("rrEye", 0.5);
+        m_rrLight = props.getFloat("rrLight", 0.5);
     }
     // Unserialize from a binary data stream
     myBDPTIntegrator(Stream *stream, InstanceManager *manager)
@@ -68,7 +68,7 @@ public:
             return its.Le(-eyeRay.d);
 
         /* Trace eye subpath */
-        traceEyeSubpath(eyeRay, its, sampler, scene, eyePath);
+        traceEyeSubpath(eyeRay, its, sampler, scene, eyePath, Li);
 
         /* Trace light subpath */
         traceLightSubpath(its, sampler, scene, lightPath);
@@ -90,7 +90,8 @@ public:
         Intersection &its,
         Sampler* sampler, 
         const Scene* scene,
-        std::vector<BDPTVertex*> &eyePath
+        std::vector<BDPTVertex*> &eyePath,
+        Spectrum& Li
     ) const {
 
         /* The sampling pdf of last vertex */
@@ -109,6 +110,7 @@ public:
             ep->n = its.shFrame.n;
             ep->value = throughput;
             ep->uv = its.uv;
+            ep->e = nullptr;
 
             /* Get BSDF */
             const BSDF *bsdf = its.getBSDF(eyeRay);
@@ -116,16 +118,12 @@ public:
             ep->pdf = 1.0f;
             eyePath.push_back(ep);
 
-            if (eyeTraceDepth >= m_rrDepth) {
-                /* Russian roulette */
-                Float q = 0.5;
-                if (sampler->next1D() >= q) {
-                    ep->value /= 1.0f - q;
-                    return;
-                }
-                throughput /= q;
-                // lastPdf *= q;
-            }
+            /* Russian roulette */
+            Float q = m_rrEye;
+            if (sampler->next1D() >= q)
+                break;
+            throughput /= q;
+            // lastPdf *= q;
 
             /* Sample BSDF * cos(theta) */
             Float bsdfPdf;
@@ -158,9 +156,12 @@ public:
             /* Ray intersection */
             scene->rayIntersect(eyeRay, its);
             
-            /* Stop when hit nothing or hit an emitter */
-            if (!its.isValid() || its.isEmitter()){
-                ep->value = Spectrum(0.0f);
+            /* Stop when hit nothing */
+            if (!its.isValid())
+                break;
+            /* Compute PT contribution */
+            if (its.isEmitter()) {
+                Li += its.Le(-eyeRay.d) * throughput / (eyeTraceDepth);
                 break;
             }
 
@@ -179,8 +180,7 @@ public:
         /* Sample light position */
         PositionSamplingRecord pRec(0.0);
 
-        Spectrum lightValue = scene->sampleEmitterPosition(pRec, sampler->next2D());
-        
+        Spectrum lightValue = scene->sampleEmitterPosition(pRec, sampler->next2D());  
         
         const Emitter *emitter = static_cast<const Emitter *>(pRec.object); 
         if (pRec.measure != EArea || !emitter->isOnSurface())
@@ -193,12 +193,10 @@ public:
         lp->pdf = pRec.pdf;
         lp->e = emitter;
         lightPath.push_back(lp);
-        return;
         
         /* Sample light direction */
         DirectionSamplingRecord dRec;       
-        emitter->sampleDirection(dRec, pRec,
-            emitter->needsDirectionSample() ?  sampler->next2D() : Point2(0.5f));
+        emitter->sampleDirection(dRec, pRec, sampler->next2D());
         if (dRec.measure != ESolidAngle)
             SLog(EError, "myBDPT only supports emitters with direction sampling on SolidAngle!");
 
@@ -209,48 +207,57 @@ public:
         Float lastPdf = dRec.pdf ;
         /* The cosine term of last vertex */
         Float lastCosine = absDot(dRec.d, pRec.n);
+
         /* Initialize throughput */
-        Spectrum throughput(lightValue);
+        Spectrum throughput(lightValue * emitter->evalDirection(dRec, pRec)
+            / dRec.pdf);
         Float eta = 1.0f;
 
         int lightTraceDepth = 1;
         while(lightTraceDepth <= m_maxDepthLight || m_maxDepthLight < 0) {
+
+            /* Russian roulette */
+            Float q = m_rrLight;
+            if (sampler->next1D() >= q)
+                break;
+            throughput /= q;
+            lastPdf *= q;
+
             /* Ray intersection */
             scene->rayIntersect(lightRay, its);
-            
-            /* Hit nothing */
-            if (!its.isValid())
-                break;
-                
-            /* Stop when hit an emitter, make it consistent in PT! */
-            if (its.isEmitter())
-                break;
-            
-            /* Sample BSDF * cos(theta) */
-            const BSDF *bsdf = its.getBSDF(lightRay);
-            Float bsdfPdf;
-            BSDFSamplingRecord bRec(its, sampler, ERadiance);
-            bsdf->sample(bRec, bsdfPdf,  sampler->next2D());
-            Spectrum bsdfVal = bsdf->eval(bRec);
-            if (bsdfVal.isZero())
-                break;
-            const Vector wo = its.toWorld(bRec.wo);
 
+            /* Stop when hit nothing or hit an emitter */
+            if (!its.isValid() || its.isEmitter())
+                break;
+            
             /* Add a vertex to the light path */
             BDPTVertex *nextlp = new BDPTVertex();
             nextlp->pos = its.p;
+            nextlp->wi = -lightRay.d;
             nextlp->n = its.shFrame.n;
+            nextlp->value = throughput;
+            nextlp->uv = its.uv;
+            nextlp->e = nullptr;
+            /* Get BSDF */
+            const BSDF *bsdf = its.getBSDF(lightRay);
+            nextlp->bsdf = bsdf;   
+            lightPath.push_back(nextlp);
+            
+            /* Sample BSDF * cos(theta) */
+            Float bsdfPdf;
+            BSDFSamplingRecord bRec(its, sampler, ERadiance);
+            Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf,  sampler->next2D());
+            // Spectrum bsdfVal = bsdf->eval(bRec);
+            const Vector wo = its.toWorld(bRec.wo);
             
             /* Compute geometric term */
             Float G = abs(its.wi.z) / (its.p - lightRay.o).lengthSquared();
             
             /* Compute its pdf on area measure */
-            nextlp->pdf = lp->pdf * lastPdf * G;
+            // nextlp->pdf = lp->pdf * lastPdf * G;
             
             /* Update throughput */
-            throughput *= bsdfVal * lastCosine / lastPdf;
-            nextlp->value = throughput;
-            lightPath.push_back(nextlp);
+            throughput *= bsdfWeight;
 
             /* Update lp */
             lp = nextlp;
@@ -267,14 +274,6 @@ public:
             /* Prepare next ray in this direction */
             lightRay = Ray(its.p, wo, lightRay.time);
 
-            if (lightTraceDepth >= m_rrDepth) {
-                /* Russian roulette */
-                Float q = std::min(throughput.max() * eta * eta, (Float) 0.95f);
-                if (sampler->next1D() >= q)
-                    return;
-                throughput /= q;
-                lastPdf *= q;
-            }
             ++lightTraceDepth;
         }
         return;
@@ -289,35 +288,52 @@ public:
         if (eyePath.size() == 0 || lightPath.size() == 0)
             return;
 
-        BDPTVertex* eyeEnd = eyePath.back();
-        BDPTVertex* lightEnd = lightPath.back();
+        for (int i = 0; i < eyePath.size(); ++i) {
+            for (int j = 0; j < lightPath.size(); ++j) {
+                BDPTVertex* eyeEnd = eyePath[i];
+                BDPTVertex* lightEnd = lightPath[j];
+                if (eyeEnd->value.max() <= 0 || lightEnd->value.max() <=0)
+                    continue;
 
-        Vector d = lightEnd->pos - eyeEnd->pos;
-        Float distSquared = d.lengthSquared();
-        Float dist = std::sqrt(distSquared);
-        d /= dist;
+                Vector d = lightEnd->pos - eyeEnd->pos;
+                Float distSquared = d.lengthSquared();
+                Float dist = std::sqrt(distSquared);
+                d /= dist;
 
-        Ray ray(eyeEnd->pos, d, Epsilon,
-                    dist*(1-ShadowEpsilon), 0.0f);
-        if (scene->rayIntersect(ray))
-            return;
-        
-        Intersection its;
-        its.p = eyeEnd->pos;
-        its.shFrame = Frame(eyeEnd->n);
-        its.uv = eyeEnd->uv;
-        its.hasUVPartials = 0;
-        
-        /* Allocate a record for querying the BSDF */
-        BSDFSamplingRecord bRec(its, its.toLocal(eyeEnd->wi), its.toLocal(d), ERadiance);
-        
-        const Spectrum bsdfVal = eyeEnd->bsdf->eval(bRec);
-        DirectionSamplingRecord dRec(-d);
-        PositionSamplingRecord pRec(0.0f);
-        pRec.n = lightEnd->n;
-        Li += eyeEnd->value * lightEnd->value * 
-            lightEnd->e->evalDirection(dRec, pRec) * bsdfVal / distSquared;
+                Ray ray(eyeEnd->pos, d, Epsilon,
+                            dist*(1-ShadowEpsilon), 0.0f);
+                if (scene->rayIntersect(ray))
+                    continue;
 
+                Intersection its;
+                its.p = eyeEnd->pos;
+                its.shFrame = Frame(eyeEnd->n);
+                its.uv = eyeEnd->uv;
+                its.hasUVPartials = 0;
+
+                /* Allocate a record for querying the BSDF */
+                BSDFSamplingRecord bRec(its, its.toLocal(eyeEnd->wi), its.toLocal(d), ERadiance);
+                Spectrum bsdfVal1 = eyeEnd->bsdf->eval(bRec);
+
+                if (lightEnd->e != nullptr) {
+                    DirectionSamplingRecord dRec(-d);
+                    PositionSamplingRecord pRec(0.0f);
+                    pRec.n = lightEnd->n;
+                    Li += eyeEnd->value * lightEnd->value * 
+                        lightEnd->e->evalDirection(dRec, pRec) * bsdfVal1 
+                        / distSquared / (i+j+2);
+                } else {
+                    its.p = lightEnd->pos;
+                    its.shFrame = Frame(lightEnd->n);
+                    its.uv = lightEnd->uv;
+                    BSDFSamplingRecord bRec(its, its.toLocal(lightEnd->wi), its.toLocal(-d),ERadiance);
+
+                    Spectrum bsdfVal2 = lightEnd->bsdf->eval(bRec);
+                    Li += eyeEnd->value * lightEnd->value * bsdfVal1 * bsdfVal2
+                        / distSquared / (i+j+2);
+                }
+            }
+        }
         return;
     }
 
