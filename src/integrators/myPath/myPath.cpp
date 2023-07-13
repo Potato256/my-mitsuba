@@ -1,7 +1,6 @@
 #include <mitsuba/render/scene.h>
 
 MTS_NAMESPACE_BEGIN
-
 class myPathIntegrator : public SamplingIntegrator {
 public:
     MTS_DECLARE_CLASS()
@@ -10,12 +9,19 @@ public:
         PathNEE,
         PathMIS
     };
+    enum MISMode {
+        UniformHeuristic = 0,
+        BalanceHeuristic,
+        PowerHeuristic
+    };
 private:
     int m_maxDepth;
     int m_rrDepth;
     static int m_LiCount;
     std::string m_strategyString;
     SamplingStrategy m_strategy;
+    std::string m_MISmodeString;
+    MISMode m_MISmode;
     
 public:
 
@@ -33,6 +39,16 @@ public:
             m_strategy = PathMIS;
         else
             Log(EError, "Unknown strategy: %s", m_strategyString.c_str());
+
+        m_MISmodeString = props.getString("MISmode", "mis");
+        if (m_MISmodeString == "uniform")
+            m_MISmode = UniformHeuristic;
+        else if (m_MISmodeString == "balance")
+            m_MISmode = BalanceHeuristic;
+        else if (m_MISmodeString == "power")
+            m_MISmode = PowerHeuristic;
+        else
+            Log(EError, "Unknown MIS mode: %s", m_MISmodeString.c_str());
     }
 
     // Unserialize from a binary data stream
@@ -59,19 +75,35 @@ public:
         case PathBSDF:
             switch (m_strategy)
             {
-                case PathBSDF: return 1;
-                case PathNEE: return 0;
-                case PathMIS: return pdfBSDF / (pdfBSDF + pdfDirect);
+            case PathBSDF: return 1;
+            case PathNEE: return 0;
+            case PathMIS: return mis(pdfBSDF, pdfDirect, m_MISmode);
+            default: return 0;
             }
         case PathNEE:
             switch (m_strategy)
             {
-                case PathBSDF: return 0;
-                case PathNEE: return 1;
-                case PathMIS: return pdfDirect / (pdfBSDF + pdfDirect);
+            case PathBSDF: return 0;
+            case PathNEE: return 1;
+            case PathMIS: return mis(pdfDirect, pdfBSDF, m_MISmode);
+            default: return 0;
             }
+        default:
+            return 0;
         }
     }
+
+#define sqr(x) ((x)*(x))
+    inline Float mis(Float p1, Float p2, MISMode mode) const {
+        switch (m_MISmode)
+        {
+        case UniformHeuristic: return 0.5;
+        case BalanceHeuristic: return p1 / (p1 + p2);
+        case PowerHeuristic: return sqr(p1) / (sqr(p1) + sqr(p2));
+        default: return 0;
+        }
+    }
+
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
