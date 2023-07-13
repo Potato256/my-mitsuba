@@ -7,21 +7,42 @@ class myBDPTIntegrator : public SamplingIntegrator {
 public:
     MTS_DECLARE_CLASS()
 
-private:
+private:    
+    enum MISMode {
+        UniformHeuristic = 0,
+        BalanceHeuristic,
+        PowerHeuristic
+    };
     int m_maxDepthEye;
     int m_maxDepthLight;
     Float m_rrEye;
     Float m_rrLight;
+    bool m_usePT;
     static int m_LiCount;
+
+    std::string m_MISmodeString;
+    MISMode m_MISmode;
 
 public:
     /// Initialize the integrator with the specified properties
     myBDPTIntegrator(const Properties &props) : SamplingIntegrator(props) {
-        m_maxDepthEye = props.getInteger("maxDepthForEye", 20);
-        m_maxDepthLight = props.getInteger("maxDepthForLight", 20);
-        m_rrEye = props.getFloat("rrEye", 0.5);
-        m_rrLight = props.getFloat("rrLight", 0.5);
+        m_maxDepthEye = props.getInteger("maxDepthEye", 20);
+        m_maxDepthLight = props.getInteger("maxDepthLight", 20);
+        m_rrEye = props.getFloat("rrEye", 0.6);
+        m_rrLight = props.getFloat("rrLight", 0.6);
+        m_usePT = props.getBoolean("usePT", true);
+
+        m_MISmodeString = props.getString("MISmode", "uniform");
+        if (m_MISmodeString == "uniform")
+            m_MISmode = UniformHeuristic;
+        else if (m_MISmodeString == "balance")
+            m_MISmode = BalanceHeuristic;
+        else if (m_MISmodeString == "power")
+            m_MISmode = PowerHeuristic;
+        else
+            Log(EError, "Unknown MIS mode: %s", m_MISmodeString.c_str());
     }
+    
     // Unserialize from a binary data stream
     myBDPTIntegrator(Stream *stream, InstanceManager *manager)
         : SamplingIntegrator(stream, manager) {}
@@ -31,58 +52,88 @@ public:
         SamplingIntegrator::serialize(stream, manager);
     }
 
+    void printInfos(){
+        std::ostringstream oss;
+        oss<<"\n------------ BDPT Info Print ------------\n";
+        oss<<"maxDepthEye: "<<m_maxDepthEye<<endl;
+        oss<<"maxDepthLight: "<<m_maxDepthLight<<endl;
+        oss<<"rrEye: "<<m_rrEye<<endl;
+        oss<<"rrLight: "<<m_rrLight<<endl;
+        oss<<"MISmode: "<<m_MISmodeString<<endl;
+        oss<<"usePT: "<<m_usePT<<endl;
+        oss<<"BDPTVertex size: "<<sizeof(BDPTVertex)<<endl;
+        oss<<"-----------------------------------------\n";
+        SLog(EDebug, oss.str().c_str());
+    }
+
     /// Preprocess function -- called on the initiating machine
     bool preprocess(const Scene *scene, RenderQueue *queue,
         const RenderJob *job, int sceneResID, int cameraResID, 
         int samplerResID) {
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
             cameraResID, samplerResID);
+        printInfos();
         return true;
     }
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
         ++m_LiCount;
-        /* Some aliases and local variables */
-        const Scene *scene = rRec.scene;
-        Intersection &its = rRec.its;
-        Sampler *sampler = rRec.sampler;
-        RayDifferential eyeRay(r);
-        Spectrum Li(0.0f);
-        Spectrum throughput(1.0f);
-        Float eta = 1.0f;
-        
-        std::vector<BDPTVertex*> lightPath;
-        std::vector<BDPTVertex*> eyePath;
 
+        Spectrum Li(0.0f);
         /* Trace first eye vertex */
+        RayDifferential eyeRay(r);
         rRec.rayIntersect(eyeRay);
         eyeRay.mint = Epsilon;
         
         /* Hit nothing */
-        if (!its.isValid())
-            return Li;
-        
+        if (!rRec.its.isValid())
+            return Li;        
         /* Hit emitter */
-        if ( its.isEmitter())
-            return its.Le(-eyeRay.d);
+        if ( rRec.its.isEmitter())
+            return rRec.its.Le(-eyeRay.d);
 
+        std::vector<BDPTVertex*> eyePath;
         /* Trace eye subpath */
-        traceEyeSubpath(eyeRay, its, sampler, scene, eyePath, Li);
+        traceEyeSubpath(eyeRay, rRec.its, rRec.sampler, rRec.scene, eyePath, Li);
 
+        std::vector<BDPTVertex*> lightPath;
         /* Trace light subpath */
-        traceLightSubpath(its, sampler, scene, lightPath);
+        traceLightSubpath(rRec.its, rRec.sampler, rRec.scene, lightPath);
 
         /* Connect eye subpath and light subpath */
-        connectSubpaths(eyePath, lightPath, scene, Li);
+        connectSubpaths(eyePath, lightPath, rRec.scene, Li);
 
         /* Clean up */
-        for (int i = 0; i < lightPath.size(); ++i)
-            delete lightPath[i];
-        for (int i = 0; i < eyePath.size(); ++i)
-            delete eyePath[i];
+        for (auto i : eyePath)   delete i;
+        for (auto i : lightPath) delete i;
 
         return Li;
+    }
+        
+    /// wi point outwards
+    Float computePdfForward(Vector3& wi, BDPTVertex* mid, BDPTVertex* next) const {
+        Intersection its;
+        its.p = mid->pos;
+        its.shFrame = Frame(mid->n);
+        its.uv = mid->uv;
+        its.hasUVPartials = 0;
+        Vector3 d = next->pos - mid->pos;
+        Float distSquared = d.lengthSquared();
+        d /= sqrt(distSquared);
+        BSDFSamplingRecord bRec(its, its.toLocal(wi), its.toLocal(d), ERadiance);
+        Float pdfBsdf = mid->bsdf->pdf(bRec);
+        return pdfBsdf * absDot(next->n, d) / distSquared;
+    }
+
+    Float computePdfLightDir(BDPTVertex* l, BDPTVertex* e) const {
+        PositionSamplingRecord pRec(0.0f);
+        pRec.n = l->n;
+        Vector3 d = e->pos - l->pos;
+        Float distSquared = d.lengthSquared();
+        d /= sqrt(distSquared);
+        DirectionSamplingRecord dRec(d);
+        return l->e->pdfDirection(dRec, pRec) * absDot(e->n, d) / distSquared;        
     }
 
     void traceEyeSubpath(
@@ -93,16 +144,18 @@ public:
         std::vector<BDPTVertex*> &eyePath,
         Spectrum& Li
     ) const {
-
-        /* The sampling pdf of last vertex */
-        // Float lastPdf = 1.0f;
         /* Initialize throughput */
         Spectrum throughput(1.0f);
-        Float eta = 1.0f;
-
+        Float lastPdf = 1.0f;
         int eyeTraceDepth = 1;
         while(eyeTraceDepth <= m_maxDepthEye || m_maxDepthEye < 0) {
-
+            
+            /* Compute last vertex's pdfInverse */
+            if (eyeTraceDepth >= 3) {
+                BDPTVertex *last = eyePath[eyeTraceDepth-2];
+                BDPTVertex *llast = eyePath[eyeTraceDepth-3];
+                last->pdfInverse = computePdfForward(eyeRay.d, last, llast);
+            }
             /* Add a vertex to the eye path */
             BDPTVertex *ep = new BDPTVertex();
             ep->pos = its.p;
@@ -111,11 +164,12 @@ public:
             ep->value = throughput;
             ep->uv = its.uv;
             ep->e = nullptr;
-
             /* Get BSDF */
             const BSDF *bsdf = its.getBSDF(eyeRay);
-            ep->bsdf = bsdf;   
-            ep->pdf = 1.0f;
+            ep->bsdf = bsdf;
+            /* Compute pdf in area measure */
+            if (eyeTraceDepth >= 2)
+                ep->pdf = lastPdf * dot(ep->wi, ep->n) / (its.t * its.t);
             eyePath.push_back(ep);
 
             /* Russian roulette */
@@ -123,32 +177,14 @@ public:
             if (sampler->next1D() >= q)
                 break;
             throughput /= q;
-            // lastPdf *= q;
 
             /* Sample BSDF * cos(theta) */
-            Float bsdfPdf;
             BSDFSamplingRecord bRec(its, sampler, ERadiance);
-            Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf, sampler->next2D());
-            // Spectrum bsdfVal = bsdf->eval(bRec) / Frame::cosTheta(bRec.wo);
-            const Vector wo = its.toWorld(bRec.wo);
+            Spectrum bsdfWeight = bsdf->sample(bRec, lastPdf, sampler->next2D());
+            const Vector3 wo = its.toWorld(bRec.wo);
 
             /* Update throughput */
             throughput *= bsdfWeight;
-            
-            /* Compute geometric term */
-            // Float G = abs(its.wi.z) / its.p.distanceSquared(lightRay.p);
-            
-            /* Compute its pdf on area measure */
-            // nextlp->pdf = lp->pdf * lastPdf * G;
-            
-            /* Update lastPdf */
-            // lastPdf = bsdfPdf;
-            
-            /* Update lastCosine */
-            // lastCosine = abs(bRec.wo.z);
-            
-            /* Update eta */
-            eta *= bRec.eta;
             
             /* Prepare next ray in this direction */
             eyeRay = Ray(its.p, wo, eyeRay.time);
@@ -159,12 +195,48 @@ public:
             /* Stop when hit nothing */
             if (!its.isValid())
                 break;
+
             /* Compute PT contribution */
             if (its.isEmitter()) {
-                Li += its.Le(-eyeRay.d) * throughput / (eyeTraceDepth);
+                if (m_usePT) {
+                    /* Compute last vertex's inverse pdf */
+                    BDPTVertex *last = eyePath[eyeTraceDepth-1];
+                    if (eyeTraceDepth >= 2) {
+                        BDPTVertex *llast = eyePath[eyeTraceDepth-2];
+                        last->pdfInverse = computePdfForward(eyeRay.d, last, llast);
+                    }
+
+                    BDPTVertex *lp = new BDPTVertex();
+                    lp->pos = its.p;
+                    lp->n = its.shFrame.n;
+                    lp->wi = -eyeRay.d;                    
+                    lp->e = its.shape->getEmitter();
+                                        
+                    lp->pdf = lastPdf * dot(lp->n, lp->wi) / (its.t * its.t);
+                    // if (dot(lp->n, lp->wi) < 0){
+                    //     std::ostringstream oss;
+                    //     oss<<endl;
+                    //     oss<<last->pos.toString()<<endl;
+                    //     oss<<its.p.toString()<<endl;
+                    //     oss<<normalize(last->pos-its.p).toString()<<endl;
+                    //     oss<<(lp->wi).toString()<<endl;
+                    //     oss<<lp->n.toString()<<endl;
+                    //     SLog(EDebug, oss.str().c_str());
+                    //     SLog(EError, "dot(lp->n, lp->wi) < 0");
+                    // }
+                    lp->pdfInverse = computePdfLightDir(lp, last);
+
+                    PositionSamplingRecord pRec(0.0f);
+                    lp->pdfLight = lp->e->pdfPosition(pRec);
+
+                    std::vector<BDPTVertex*> lightPath;
+                    lightPath.push_back(lp);
+
+                    Li += its.Le(-eyeRay.d) * throughput * 
+                        MISweight(eyePath, lightPath, eyeTraceDepth, -1);
+                } 
                 break;
             }
-
             ++eyeTraceDepth;
         }
         return;
@@ -179,7 +251,6 @@ public:
         /* Trace light subpath */
         /* Sample light position */
         PositionSamplingRecord pRec(0.0);
-
         Spectrum lightValue = scene->sampleEmitterPosition(pRec, sampler->next2D());  
         
         const Emitter *emitter = static_cast<const Emitter *>(pRec.object); 
@@ -190,7 +261,7 @@ public:
         lp->pos = pRec.p;
         lp->n = pRec.n;
         lp->value = lightValue;
-        lp->pdf = pRec.pdf;
+        lp->pdfLight = pRec.pdf;
         lp->e = emitter;
         lightPath.push_back(lp);
         
@@ -205,75 +276,58 @@ public:
 
         /* The sampling pdf of last vertex */
         Float lastPdf = dRec.pdf ;
-        /* The cosine term of last vertex */
-        Float lastCosine = absDot(dRec.d, pRec.n);
 
         /* Initialize throughput */
         Spectrum throughput(lightValue * emitter->evalDirection(dRec, pRec)
             / dRec.pdf);
-        Float eta = 1.0f;
 
         int lightTraceDepth = 1;
         while(lightTraceDepth <= m_maxDepthLight || m_maxDepthLight < 0) {
-
             /* Russian roulette */
             Float q = m_rrLight;
             if (sampler->next1D() >= q)
                 break;
             throughput /= q;
-            lastPdf *= q;
 
             /* Ray intersection */
             scene->rayIntersect(lightRay, its);
-
             /* Stop when hit nothing or hit an emitter */
             if (!its.isValid() || its.isEmitter())
                 break;
             
             /* Add a vertex to the light path */
-            BDPTVertex *nextlp = new BDPTVertex();
-            nextlp->pos = its.p;
-            nextlp->wi = -lightRay.d;
-            nextlp->n = its.shFrame.n;
-            nextlp->value = throughput;
-            nextlp->uv = its.uv;
-            nextlp->e = nullptr;
+            BDPTVertex *lp = new BDPTVertex();
+            lp->pos = its.p;
+            lp->wi = -lightRay.d;
+            lp->n = its.shFrame.n;
+            lp->value = throughput;
+            lp->uv = its.uv;
+            lp->e = nullptr;
             /* Get BSDF */
             const BSDF *bsdf = its.getBSDF(lightRay);
-            nextlp->bsdf = bsdf;   
-            lightPath.push_back(nextlp);
+            lp->bsdf = bsdf;
+
+            /* The order of pdf/pdfInverse is opposite here comparing to eye trace! */
+            BDPTVertex *last = lightPath[lightTraceDepth-1];
+            Float distSquared = its.t * its.t;
+            last->pdfInverse = lastPdf * dot(lp->wi, lp->n) / distSquared;
+
+            if (lightTraceDepth >= 2) {
+                BDPTVertex *llast = lightPath[lightTraceDepth-2];                
+                llast->pdf = computePdfForward(lightRay.d, last, llast);
+            }
+
+            lightPath.push_back(lp);
             
             /* Sample BSDF * cos(theta) */
-            Float bsdfPdf;
             BSDFSamplingRecord bRec(its, sampler, ERadiance);
-            Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf,  sampler->next2D());
-            // Spectrum bsdfVal = bsdf->eval(bRec);
+            Spectrum bsdfWeight = bsdf->sample(bRec, lastPdf, sampler->next2D());
             const Vector wo = its.toWorld(bRec.wo);
-            
-            /* Compute geometric term */
-            Float G = abs(its.wi.z) / (its.p - lightRay.o).lengthSquared();
-            
-            /* Compute its pdf on area measure */
-            // nextlp->pdf = lp->pdf * lastPdf * G;
-            
+
             /* Update throughput */
             throughput *= bsdfWeight;
-
-            /* Update lp */
-            lp = nextlp;
-
-            /* Update lastPdf */
-            lastPdf = bsdfPdf;
-            
-            /* Update lastCosine */
-            lastCosine = abs(bRec.wo.z);
-            
-            /* Update eta */
-            eta *= bRec.eta;
-            
             /* Prepare next ray in this direction */
             lightRay = Ray(its.p, wo, lightRay.time);
-
             ++lightTraceDepth;
         }
         return;
@@ -287,57 +341,214 @@ public:
     ) const {
         if (eyePath.size() == 0 || lightPath.size() == 0)
             return;
-
         for (int i = 0; i < eyePath.size(); ++i) {
             for (int j = 0; j < lightPath.size(); ++j) {
                 BDPTVertex* eyeEnd = eyePath[i];
                 BDPTVertex* lightEnd = lightPath[j];
-                if (eyeEnd->value.max() <= 0 || lightEnd->value.max() <=0)
-                    continue;
-
-                Vector d = lightEnd->pos - eyeEnd->pos;
-                Float distSquared = d.lengthSquared();
-                Float dist = std::sqrt(distSquared);
-                d /= dist;
-
-                Ray ray(eyeEnd->pos, d, Epsilon,
-                            dist*(1-ShadowEpsilon), 0.0f);
-                if (scene->rayIntersect(ray))
-                    continue;
-
-                Intersection its;
-                its.p = eyeEnd->pos;
-                its.shFrame = Frame(eyeEnd->n);
-                its.uv = eyeEnd->uv;
-                its.hasUVPartials = 0;
-
-                /* Allocate a record for querying the BSDF */
-                BSDFSamplingRecord bRec(its, its.toLocal(eyeEnd->wi), its.toLocal(d), ERadiance);
-                Spectrum bsdfVal1 = eyeEnd->bsdf->eval(bRec);
-
-                if (lightEnd->e != nullptr) {
-                    DirectionSamplingRecord dRec(-d);
-                    PositionSamplingRecord pRec(0.0f);
-                    pRec.n = lightEnd->n;
-                    Li += eyeEnd->value * lightEnd->value * 
-                        lightEnd->e->evalDirection(dRec, pRec) * bsdfVal1 
-                        / distSquared / (i+j+2);
-                } else {
-                    its.p = lightEnd->pos;
-                    its.shFrame = Frame(lightEnd->n);
-                    its.uv = lightEnd->uv;
-                    BSDFSamplingRecord bRec(its, its.toLocal(lightEnd->wi), its.toLocal(-d),ERadiance);
-
-                    Spectrum bsdfVal2 = lightEnd->bsdf->eval(bRec);
-                    Li += eyeEnd->value * lightEnd->value * bsdfVal1 * bsdfVal2
-                        / distSquared / (i+j+2);
-                }
+                Spectrum value;
+                if(evalContri(eyeEnd, lightEnd, scene, value))
+                    Li += value * MISweight(eyePath, lightPath, i, j);
             }
         }
-        return;
     }
 
-public:
+    bool evalContri(
+        BDPTVertex* eyeEnd,
+        BDPTVertex* lightEnd, 
+        const Scene* scene, 
+        Spectrum& contribution
+    ) const {
+        
+        if (eyeEnd->value.max() <= 0 || lightEnd->value.max() <=0)
+            return false;
+        
+        Vector d = lightEnd->pos - eyeEnd->pos;
+        Float distSquared = d.lengthSquared();
+        Float dist = std::sqrt(distSquared);
+        d /= dist;
+        Ray ray(eyeEnd->pos, d, Epsilon,
+                    dist*(1-ShadowEpsilon), 0.0f);
+        
+        if (scene->rayIntersect(ray))
+            return false;
+
+        Intersection its;
+        its.p = eyeEnd->pos;
+        its.shFrame = Frame(eyeEnd->n);
+        its.uv = eyeEnd->uv;
+        its.hasUVPartials = 0;
+        
+        /* Allocate a record for querying the BSDF */
+        BSDFSamplingRecord bRec(its, its.toLocal(eyeEnd->wi), its.toLocal(d), ERadiance);
+        Spectrum bsdfVal1 = eyeEnd->bsdf->eval(bRec);
+        if (lightEnd->e != nullptr) {
+            DirectionSamplingRecord dRec(-d);
+            PositionSamplingRecord pRec(0.0f);
+            pRec.n = lightEnd->n;
+            contribution = eyeEnd->value * lightEnd->value * 
+                lightEnd->e->evalDirection(dRec, pRec) * bsdfVal1 
+                / distSquared;
+        } else {
+            its.p = lightEnd->pos;
+            its.shFrame = Frame(lightEnd->n);
+            its.uv = lightEnd->uv;
+            BSDFSamplingRecord bRec(its, its.toLocal(lightEnd->wi), its.toLocal(-d),ERadiance);
+            Spectrum bsdfVal2 = lightEnd->bsdf->eval(bRec);
+            contribution = eyeEnd->value * lightEnd->value * bsdfVal1 * bsdfVal2
+                / distSquared;;
+        }
+        return true;
+    }
+
+    Float MISweight(
+        std::vector<BDPTVertex*> eyePath, 
+        std::vector<BDPTVertex*> lightPath,
+        int eyeEnd, 
+        int lightEnd
+    ) const {
+        int numStrategy = eyeEnd + lightEnd + 1 + m_usePT;
+        if (m_MISmode == UniformHeuristic) 
+            return 1.0f / numStrategy;        
+
+        if (eyeEnd !=numStrategy-1 && eyeEnd!=numStrategy-2)
+            return 0.0f;
+
+        /**
+         *              p_el     p_ll
+         *  e1  ->  e2  --->  l2  ->  l1
+         *  e1  <-  e2  <---  l2  <-  l1
+         *      p_ee    p_le
+         */
+        std::vector<float> pdfForward;
+        std::vector<float> pdfInverse;
+
+        if (lightEnd == -1){
+            /* PT */
+            for (int i = 1; i < eyeEnd; ++i){
+                pdfForward.push_back(eyePath[i]->pdf);
+                pdfInverse.push_back(eyePath[i]->pdfInverse);
+            }
+            BDPTVertex* l = lightPath[0];
+            pdfForward.push_back(l->pdf);
+            pdfInverse.push_back(l->pdfInverse);
+        }
+        else if (eyeEnd == 0 && lightEnd == 0){
+            /* One eye vertex and one light vertex */
+            BDPTVertex* e = eyePath[0];
+            BDPTVertex* l = lightPath[0];
+            l->pdf = computePdfForward(e->wi, e, l);
+            pdfForward.push_back(l->pdf);
+            l->pdfInverse = computePdfLightDir(l, e);
+            pdfInverse.push_back(l->pdfInverse);
+        }
+        else if (eyeEnd == 0) {
+            /* One eye vertex */
+            BDPTVertex* e = eyePath[0];
+            BDPTVertex* l = lightPath[lightEnd];
+            BDPTVertex* ll = lightPath[lightEnd-1];
+            l->pdf = computePdfForward(e->wi, e, l);
+            l->pdfInverse = computePdfForward(l->wi, l, e);
+            Vector3 d = normalize(l->pos - e->pos);
+            ll->pdf = computePdfForward(-d, l, ll);
+            for (int i = lightEnd; i >= 0; --i) {
+                pdfForward.push_back(lightPath[i]->pdf);
+                pdfInverse.push_back(lightPath[i]->pdfInverse);
+            }
+        }
+        else if (lightEnd == 0) {
+            /* One light vertex */
+            BDPTVertex* e = eyePath[eyeEnd];
+            BDPTVertex* ee = eyePath[eyeEnd-1];
+            BDPTVertex* l = lightPath[0];
+            Vector3 d = normalize(l->pos - e->pos);
+            e->pdfInverse = computePdfForward(d, e, ee);
+            l->pdf = computePdfForward(e->wi, e, l);
+            l->pdfInverse = computePdfLightDir(l, e);
+            for (int i = 1; i <= eyeEnd; ++i){
+                pdfForward.push_back(eyePath[i]->pdf);
+                pdfInverse.push_back(eyePath[i]->pdfInverse);
+            }
+            pdfForward.push_back(l->pdf);
+            pdfInverse.push_back(l->pdfInverse);
+        }
+        else {
+            /* Other case */
+            BDPTVertex* e = eyePath[eyeEnd];
+            BDPTVertex* ee = eyePath[eyeEnd-1];
+            BDPTVertex* l = lightPath[lightEnd];
+            BDPTVertex* ll = lightPath[lightEnd-1];
+            Vector3 d = normalize(l->pos - e->pos);
+            e->pdfInverse = computePdfForward(d, e, ee);
+            l->pdf = computePdfForward(e->wi, e, l);
+            l->pdfInverse = computePdfForward(l->wi, l, e);
+            ll->pdf = computePdfForward(-d, l, ll);
+            for (int i = 1; i <= eyeEnd; ++i){
+                pdfForward.push_back(eyePath[i]->pdf);
+                pdfInverse.push_back(eyePath[i]->pdfInverse);
+            }
+            for (int i = lightEnd; i >= 0; --i) {
+                pdfForward.push_back(lightPath[i]->pdf);
+                pdfInverse.push_back(lightPath[i]->pdfInverse);
+            }
+        }
+        pdfInverse.push_back(lightPath[0]->pdfLight);
+
+        int curStrategy = eyeEnd;
+        float tmp = 1.0f;
+        float curPdf = 1.0f;
+        Float denominator = 1.0f;
+
+        // if (m_LiCount < 0){
+        //     std::ostringstream oss;
+        //     oss<<endl;
+        //     oss<<"eyeEnd: "<<eyeEnd<<endl;
+        //     oss<<"lightEnd: "<<lightEnd<<endl;
+        //     oss<<"numStrategy: "<<numStrategy<<endl;
+        //     oss<<"curStrategy: "<<curStrategy<<endl;
+        //     oss<<"pdfForward size: "<<pdfForward.size()<<endl;
+        //     for (int i = 0; i < pdfForward.size(); ++i)
+        //         oss<<pdfForward[i]<<" ";
+        //     oss<<endl;
+        //     oss<<"pdfInverse size: "<<pdfInverse.size()<<endl;
+        //     for (int i = 0; i < pdfInverse.size(); ++i)
+        //         oss<<pdfInverse[i]<<" ";
+        //     oss<<endl<<endl;
+        //     SLog(EDebug, oss.str().c_str());
+        // }
+        
+
+        for (int i = curStrategy - 1; i >= 0 ; --i)
+            curPdf *= pdfForward[i]; 
+        for (int i = curStrategy + 1; i < numStrategy; ++i)
+            curPdf *= pdfInverse[i];
+        if (curPdf <= 0.0f)
+            return 0.0f;
+        
+
+        if (m_MISmode == BalanceHeuristic) {
+            for (int i = curStrategy - 1; i >= 0 ; --i) {
+                tmp *= pdfInverse[i+1] / pdfForward[i]; 
+                if (i==numStrategy-1||i==numStrategy-2)
+                denominator += tmp;
+            }
+            for (int i = curStrategy + 1; i < numStrategy; ++i) {
+                tmp *= pdfForward[i-1] / pdfInverse[i];
+                if (i==numStrategy-1||i==numStrategy-2)
+                denominator += tmp;
+            }
+        }
+        else if (m_MISmode == PowerHeuristic){
+            for (int i = curStrategy - 1; i >= 0 ; --i) {
+                tmp *= pdfInverse[i+1] / pdfForward[i];
+                denominator += tmp*tmp;
+            }
+            for (int i = curStrategy + 1; i < numStrategy; ++i) {
+                tmp *= pdfForward[i-1] / pdfInverse[i];
+                denominator += tmp*tmp;
+            }
+        }
+        return 1.0f / denominator;
+    }
 
 };
 

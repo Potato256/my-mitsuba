@@ -40,7 +40,7 @@ public:
         else
             Log(EError, "Unknown strategy: %s", m_strategyString.c_str());
 
-        m_MISmodeString = props.getString("MISmode", "mis");
+        m_MISmodeString = props.getString("MISmode", "uniform");
         if (m_MISmodeString == "uniform")
             m_MISmode = UniformHeuristic;
         else if (m_MISmodeString == "balance")
