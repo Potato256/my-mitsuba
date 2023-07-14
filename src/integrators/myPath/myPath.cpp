@@ -104,7 +104,6 @@ public:
         }
     }
 
-
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
         ++m_LiCount;

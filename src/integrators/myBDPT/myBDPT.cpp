@@ -1,6 +1,9 @@
 #include <mitsuba/render/scene.h>
 #include "myBDPT.h"
 
+#define BDPT_ONLT_PT
+#undef BDPT_ONLT_PT
+
 MTS_NAMESPACE_BEGIN
 
 class myBDPTIntegrator : public SamplingIntegrator {
@@ -169,7 +172,7 @@ public:
             ep->bsdf = bsdf;
             /* Compute pdf in area measure */
             if (eyeTraceDepth >= 2)
-                ep->pdf = lastPdf * dot(ep->wi, ep->n) / (its.t * its.t);
+                ep->pdf = lastPdf * absDot(ep->wi, ep->n) / (its.t * its.t);
             eyePath.push_back(ep);
 
             /* Russian roulette */
@@ -205,33 +208,22 @@ public:
                         BDPTVertex *llast = eyePath[eyeTraceDepth-2];
                         last->pdfInverse = computePdfForward(eyeRay.d, last, llast);
                     }
-
-                    BDPTVertex *lp = new BDPTVertex();
-                    lp->pos = its.p;
-                    lp->n = its.shFrame.n;
-                    lp->wi = -eyeRay.d;                    
-                    lp->e = its.shape->getEmitter();
+                    BDPTVertex *e = new BDPTVertex();
+                    e->pos = its.p;
+                    e->n = its.shFrame.n;
+                    e->wi = -eyeRay.d;                    
+                    e->e = its.shape->getEmitter();
                                         
-                    lp->pdf = lastPdf * dot(lp->n, lp->wi) / (its.t * its.t);
-                    // if (dot(lp->n, lp->wi) < 0){
-                    //     std::ostringstream oss;
-                    //     oss<<endl;
-                    //     oss<<last->pos.toString()<<endl;
-                    //     oss<<its.p.toString()<<endl;
-                    //     oss<<normalize(last->pos-its.p).toString()<<endl;
-                    //     oss<<(lp->wi).toString()<<endl;
-                    //     oss<<lp->n.toString()<<endl;
-                    //     SLog(EDebug, oss.str().c_str());
-                    //     SLog(EError, "dot(lp->n, lp->wi) < 0");
-                    // }
-                    lp->pdfInverse = computePdfLightDir(lp, last);
+                    e->pdf = lastPdf * absDot(e->n, e->wi) / (its.t * its.t);
+                    e->pdfInverse = computePdfLightDir(e, last);
 
                     PositionSamplingRecord pRec(0.0f);
-                    lp->pdfLight = lp->e->pdfPosition(pRec);
+                    e->pdfLight = e->e->pdfPosition(pRec);
 
+                    eyePath.push_back(e);
+                    /* For pdflight */
                     std::vector<BDPTVertex*> lightPath;
-                    lightPath.push_back(lp);
-
+                    lightPath.push_back(e);
                     Li += its.Le(-eyeRay.d) * throughput * 
                         MISweight(eyePath, lightPath, eyeTraceDepth, -1);
                 } 
@@ -310,7 +302,7 @@ public:
             /* The order of pdf/pdfInverse is opposite here comparing to eye trace! */
             BDPTVertex *last = lightPath[lightTraceDepth-1];
             Float distSquared = its.t * its.t;
-            last->pdfInverse = lastPdf * dot(lp->wi, lp->n) / distSquared;
+            last->pdfInverse = lastPdf * absDot(lp->wi, lp->n) / distSquared;
 
             if (lightTraceDepth >= 2) {
                 BDPTVertex *llast = lightPath[lightTraceDepth-2];                
@@ -410,8 +402,10 @@ public:
         if (m_MISmode == UniformHeuristic) 
             return 1.0f / numStrategy;        
 
+#if defined BDPT_ONLT_PT
         if (eyeEnd !=numStrategy-1 && eyeEnd!=numStrategy-2)
             return 0.0f;
+#endif
 
         /**
          *              p_el     p_ll
@@ -421,36 +415,40 @@ public:
          */
         std::vector<float> pdfForward;
         std::vector<float> pdfInverse;
+        Float p_ee, p_el, p_le, p_ll;
 
         if (lightEnd == -1){
             /* PT */
-            for (int i = 1; i < eyeEnd; ++i){
+            for (int i = 1; i <= eyeEnd; ++i){
                 pdfForward.push_back(eyePath[i]->pdf);
                 pdfInverse.push_back(eyePath[i]->pdfInverse);
             }
-            BDPTVertex* l = lightPath[0];
-            pdfForward.push_back(l->pdf);
-            pdfInverse.push_back(l->pdfInverse);
         }
         else if (eyeEnd == 0 && lightEnd == 0){
             /* One eye vertex and one light vertex */
             BDPTVertex* e = eyePath[0];
             BDPTVertex* l = lightPath[0];
-            l->pdf = computePdfForward(e->wi, e, l);
-            pdfForward.push_back(l->pdf);
-            l->pdfInverse = computePdfLightDir(l, e);
-            pdfInverse.push_back(l->pdfInverse);
+            p_el = computePdfForward(e->wi, e, l);
+            p_le = computePdfLightDir(l, e);
+            pdfForward.push_back(p_el);
+            pdfInverse.push_back(p_le);
         }
         else if (eyeEnd == 0) {
             /* One eye vertex */
             BDPTVertex* e = eyePath[0];
             BDPTVertex* l = lightPath[lightEnd];
             BDPTVertex* ll = lightPath[lightEnd-1];
-            l->pdf = computePdfForward(e->wi, e, l);
-            l->pdfInverse = computePdfForward(l->wi, l, e);
             Vector3 d = normalize(l->pos - e->pos);
-            ll->pdf = computePdfForward(-d, l, ll);
-            for (int i = lightEnd; i >= 0; --i) {
+            p_el = computePdfForward(e->wi, e, l);
+            p_le = computePdfForward(l->wi, l, e);
+            p_ll = computePdfForward(-d, l, ll);
+            
+            pdfForward.push_back(p_el);
+            pdfInverse.push_back(p_le);
+            pdfForward.push_back(p_ll);
+            pdfInverse.push_back(ll->pdfInverse);
+
+            for (int i = lightEnd-2; i >= 0; --i) {
                 pdfForward.push_back(lightPath[i]->pdf);
                 pdfInverse.push_back(lightPath[i]->pdfInverse);
             }
@@ -461,15 +459,19 @@ public:
             BDPTVertex* ee = eyePath[eyeEnd-1];
             BDPTVertex* l = lightPath[0];
             Vector3 d = normalize(l->pos - e->pos);
-            e->pdfInverse = computePdfForward(d, e, ee);
-            l->pdf = computePdfForward(e->wi, e, l);
-            l->pdfInverse = computePdfLightDir(l, e);
-            for (int i = 1; i <= eyeEnd; ++i){
+
+            p_ee = computePdfForward(d, e, ee);
+            p_el = computePdfForward(e->wi, e, l);
+            p_le = computePdfLightDir(l, e);
+
+            for (int i = 1; i < eyeEnd; ++i){
                 pdfForward.push_back(eyePath[i]->pdf);
                 pdfInverse.push_back(eyePath[i]->pdfInverse);
             }
-            pdfForward.push_back(l->pdf);
-            pdfInverse.push_back(l->pdfInverse);
+            pdfForward.push_back(e->pdf);
+            pdfInverse.push_back(p_ee);
+            pdfForward.push_back(p_el);
+            pdfInverse.push_back(p_le);
         }
         else {
             /* Other case */
@@ -478,15 +480,23 @@ public:
             BDPTVertex* l = lightPath[lightEnd];
             BDPTVertex* ll = lightPath[lightEnd-1];
             Vector3 d = normalize(l->pos - e->pos);
-            e->pdfInverse = computePdfForward(d, e, ee);
-            l->pdf = computePdfForward(e->wi, e, l);
-            l->pdfInverse = computePdfForward(l->wi, l, e);
-            ll->pdf = computePdfForward(-d, l, ll);
-            for (int i = 1; i <= eyeEnd; ++i){
+
+            p_ee = computePdfForward(d, e, ee);
+            p_el = computePdfForward(e->wi, e, l);
+            p_le = computePdfForward(l->wi, l, e);
+            p_ll = computePdfForward(-d, l, ll);
+
+            for (int i = 1; i < eyeEnd; ++i){
                 pdfForward.push_back(eyePath[i]->pdf);
                 pdfInverse.push_back(eyePath[i]->pdfInverse);
             }
-            for (int i = lightEnd; i >= 0; --i) {
+            pdfForward.push_back(e->pdf);
+            pdfInverse.push_back(p_ee);
+            pdfForward.push_back(p_el);
+            pdfInverse.push_back(p_le);
+            pdfForward.push_back(p_ll);
+            pdfInverse.push_back(ll->pdfInverse);
+            for (int i = lightEnd-2; i >= 0; --i) {
                 pdfForward.push_back(lightPath[i]->pdf);
                 pdfInverse.push_back(lightPath[i]->pdfInverse);
             }
@@ -494,28 +504,8 @@ public:
         pdfInverse.push_back(lightPath[0]->pdfLight);
 
         int curStrategy = eyeEnd;
-        float tmp = 1.0f;
         float curPdf = 1.0f;
         Float denominator = 1.0f;
-
-        // if (m_LiCount < 0){
-        //     std::ostringstream oss;
-        //     oss<<endl;
-        //     oss<<"eyeEnd: "<<eyeEnd<<endl;
-        //     oss<<"lightEnd: "<<lightEnd<<endl;
-        //     oss<<"numStrategy: "<<numStrategy<<endl;
-        //     oss<<"curStrategy: "<<curStrategy<<endl;
-        //     oss<<"pdfForward size: "<<pdfForward.size()<<endl;
-        //     for (int i = 0; i < pdfForward.size(); ++i)
-        //         oss<<pdfForward[i]<<" ";
-        //     oss<<endl;
-        //     oss<<"pdfInverse size: "<<pdfInverse.size()<<endl;
-        //     for (int i = 0; i < pdfInverse.size(); ++i)
-        //         oss<<pdfInverse[i]<<" ";
-        //     oss<<endl<<endl;
-        //     SLog(EDebug, oss.str().c_str());
-        // }
-        
 
         for (int i = curStrategy - 1; i >= 0 ; --i)
             curPdf *= pdfForward[i]; 
@@ -524,26 +514,39 @@ public:
         if (curPdf <= 0.0f)
             return 0.0f;
         
-
         if (m_MISmode == BalanceHeuristic) {
+            float tmp = 1.0f;
             for (int i = curStrategy - 1; i >= 0 ; --i) {
                 tmp *= pdfInverse[i+1] / pdfForward[i]; 
+#if defined BDPT_ONLT_PT
                 if (i==numStrategy-1||i==numStrategy-2)
+#endif
                 denominator += tmp;
             }
+            tmp = 1.0f;
             for (int i = curStrategy + 1; i < numStrategy; ++i) {
                 tmp *= pdfForward[i-1] / pdfInverse[i];
+#if defined BDPT_ONLT_PT
                 if (i==numStrategy-1||i==numStrategy-2)
+#endif
                 denominator += tmp;
             }
         }
         else if (m_MISmode == PowerHeuristic){
+            float tmp = 1.0f;
             for (int i = curStrategy - 1; i >= 0 ; --i) {
                 tmp *= pdfInverse[i+1] / pdfForward[i];
+#if defined BDPT_ONLT_PT
+                if (i==numStrategy-1||i==numStrategy-2)
+#endif
                 denominator += tmp*tmp;
             }
+            tmp = 1.0f;
             for (int i = curStrategy + 1; i < numStrategy; ++i) {
                 tmp *= pdfForward[i-1] / pdfInverse[i];
+#if defined BDPT_ONLT_PT
+                if (i==numStrategy-1||i==numStrategy-2)
+#endif
                 denominator += tmp*tmp;
             }
         }
