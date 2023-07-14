@@ -19,12 +19,14 @@ struct BDPTVertex{
 
     std::string toString() const {
         std::ostringstream oss;
-        oss << "pos: " +  pos.toString() + "\n" 
-            << "n: " +    n.toString() + "\n"
-            << "wi: " +   wi.toString() + "\n"
-            << "uv: " <<  uv.toString() + "\n"
-            << "pdf: "<<  pdf << "\n"
-            << "value: "+ value.toString() + "\n";
+        oss << "pos:        "<< pos.toString() + "\n" 
+            << "n:          "<< n.toString() + "\n"
+            << "wi:         "<< wi.toString() + "\n"
+            << "value:      "<< value.toString() + "\n"
+            << "uv:         "<< uv.toString() + "\n"
+            << "pdf:        "<<  pdf << "\n"
+            << "pdfInverse: "<<  pdfInverse << "\n"
+            << "pdfLight:   "<<  pdfLight << "\n";
         return oss.str();
     }    
 };
