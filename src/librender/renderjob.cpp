@@ -89,6 +89,7 @@ void RenderJob::run() {
     ref<Sampler> sampler = m_scene->getSampler();
     m_cancelled = false;
 
+    // Log(EInfo, m_scene.toString().c_str());
     try {
         m_scene->getFilm()->setDestinationFile(m_scene->getDestinationFile(),
             m_scene->getBlockSize());
@@ -99,6 +100,9 @@ void RenderJob::run() {
                 m_scene->getSourceFile().filename().string().c_str());
         }
 
+        // Log(EInfo, m_scene.toString().c_str());
+        // Log(EInfo, m_scene->getAABB().toString().c_str());
+            
         if (!m_cancelled) {
             if (!m_scene->render(m_queue, this, m_sceneResID, m_sensorResID, m_samplerResID)) {
                 m_cancelled = true;

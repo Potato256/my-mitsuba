@@ -32,13 +32,13 @@ private:
 public:
     /// Initialize the integrator with the specified properties
     myBDPTIntegrator(const Properties &props) : SamplingIntegrator(props) {
-        m_maxDepthEye = props.getInteger("maxDepthEye", 20);
-        m_maxDepthLight = props.getInteger("maxDepthLight", 20);
+        m_maxDepthEye = props.getInteger("maxDepthEye", 50);
+        m_maxDepthLight = props.getInteger("maxDepthLight", 50);
         m_rrEye = props.getFloat("rrEye", 0.6);
         m_rrLight = props.getFloat("rrLight", 0.6);
         m_usePT = props.getBoolean("usePT", true);
 
-        m_MISmodeString = props.getString("MISmode", "uniform");
+        m_MISmodeString = props.getString("MISmode", "balance");
         if (m_MISmodeString == "uniform")
             m_MISmode = UniformHeuristic;
         else if (m_MISmodeString == "balance")
