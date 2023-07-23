@@ -49,7 +49,7 @@ public:
             m_maxDist = std::max(m_maxDist,
                 (cameraPosition - sceneAABB.getCorner(i)).length());
         
-        Point m_min(1e20), m_max(-1e20), m_center, m_lcorner;
+        Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
 
         for (auto m : meshes){
@@ -66,7 +66,7 @@ public:
         Float r = 0;
         for (int i = 0; i < 3; ++i)
             r = std::max(r, d[i]);
-        r /= 2.0f;
+        r *= 0.5 * 1.01f;
         m_center = m_min + d / 2.0f;
         m_lcorner = m_center - Vector3(r);
         m_baseAABB = AABB(m_lcorner, m_lcorner + Vector3(2*r));
@@ -75,12 +75,12 @@ public:
         m_om.setAABB(m_baseAABB);
         m_om.setSize(2*r);
         // m_om.testSetAll();
-        m_om.testSetPattern();
+        m_om.testSetBallPattern();
 
         // std::ostringstream oss;
         // oss<<
         // SLog(EDebug, m_om.toString().c_str());
-        SLog(EDebug, m_om.toString().c_str());
+        // SLog(EDebug, m_om.toString().c_str());
         
         return true;
     }
@@ -88,9 +88,9 @@ public:
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
 
-        Float nearT, farT;
+        Float nearT;
         if (m_om.rayIntersect(r, nearT)){
-            return m_color;
+            return Spectrum(0.8f - nearT/m_maxDist) * m_color;
         }
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;
