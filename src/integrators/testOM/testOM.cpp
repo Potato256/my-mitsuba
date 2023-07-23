@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 32
+#define OMSIZE 64
 #define OMDEPTH OMSIZE / 32
 
 class TestOMIntegrater : public SamplingIntegrator
@@ -85,7 +85,7 @@ public:
         test_om.clear();
         test_om.setAABB(m_baseAABB);
         test_om.setSize(2 * r);
-        m_om.generateROMA(&test_om, Point2(0.2, 0.2));
+        m_om.generateROMA(&test_om, Point2(0.4, 0.6));
 
         // std::ostringstream oss;
         // oss<<
