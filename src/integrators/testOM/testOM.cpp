@@ -57,9 +57,8 @@ public:
         Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
 
-        for (auto m : meshes)
-        {
-            SLog(EInfo, m->toString().c_str());
+        for (auto m : meshes){
+            // SLog(EInfo, m->toString().c_str());
             m_min.x = std::min(m_min.x, m->getAABB().min.x);
             m_min.y = std::min(m_min.y, m->getAABB().min.y);
             m_min.z = std::min(m_min.z, m->getAABB().min.z);
@@ -81,11 +80,13 @@ public:
         m_om.setAABB(m_baseAABB);
         m_om.setSize(2 * r);
         // m_om.testSetAll();
-        m_om.testSetBallPattern();
+        // m_om.testSetBallPattern();
+        m_om.setScene(scene);
         test_om.clear();
         test_om.setAABB(m_baseAABB);
         test_om.setSize(2 * r);
         m_om.generateROMA(&test_om, Point2(0.2, 0.2));
+
         // std::ostringstream oss;
         // oss<<
         // SLog(EDebug, m_om.toString().c_str());

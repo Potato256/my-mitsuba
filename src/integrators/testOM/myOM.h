@@ -15,6 +15,7 @@ private:
     AABB m_AABB;
     Float m_size;
     Float m_gridSize;
+    Float m_gridSizeRecp;
 
 public:
     OccupancyMap() {}
@@ -33,11 +34,15 @@ public:
     {
         m_size = d;
         m_gridSize = m_size / omSize;
+        m_gridSizeRecp = 1 / m_gridSize;
     }
 
-    inline void set(int x, int y, int z)
-    {
-        bom[x][y][(z >> 5) & MASK_l27b] |= 1 << (z & MASK_l5b);
+    inline void set(int x, int y, int z){
+        bom[x][y][(z & MASK_h27b) >> 5] |= 1 << (z & MASK_l5b);
+    }    
+    
+    inline void set(Point3i p){
+        set(p.x, p.y, p.z);
     }
 
     inline void setArray(int *array, int x, int y, int z)
@@ -50,9 +55,88 @@ public:
         return x >= 0 && x < omSize && y >= 0 && y < omSize && z >= 0 && z < omSize;
     }
 
-    inline bool get(int x, int y, int z) const
-    {
-        return bom[x][y][(z >> 5) & MASK_l27b] & (1 << (z & MASK_l5b));
+    inline bool check(Point3i p) const {
+        return check(p.x, p.y, p.z);
+    }
+
+    inline bool get(int x, int y, int z) const {
+        return bom[x][y][(z & MASK_h27b) >> 5] & (1 << (z & MASK_l5b));
+    }    
+    
+    inline void get(Point3i p) const {
+        get(p.x, p.y, p.z);
+    }
+
+    inline void setScene(const Scene *scene){
+        auto meshes = scene->getMeshes();        
+        for (auto m : meshes)
+            setMesh(m);
+    }
+
+    inline void setMesh(const TriMesh *mesh){
+        const Triangle *tri = mesh->getTriangles();
+        const Point3 *pos = mesh->getVertexPositions();
+        int triCnt = (int) mesh->getTriangleCount();
+        for (int i=0; i<triCnt; ++i){
+            Point3 p1, p2, p3;
+            getGridIndexf(pos[tri[i].idx[0]],p1);
+            getGridIndexf(pos[tri[i].idx[1]],p2);
+            getGridIndexf(pos[tri[i].idx[2]],p3);
+            setTriangle(p1, p2, p3);
+        }
+        return;
+    }
+    
+    void setTriangle(Point3& p0, Point3& p1, Point3& p2, int depth=0){
+        Point3i p0i, p1i, p2i; 
+        getGridIndexf2i(p0, p0i);
+        getGridIndexf2i(p1, p1i);
+        getGridIndexf2i(p2, p2i);
+        set(p0i);
+        set(p1i);
+        set(p2i);
+        if (closeEnough(p0i, p1i, p2i))
+            return;
+        Point3i p01i, p12i, p20i; 
+        Point3 p01 = p0 + (p1 - p0)/2;
+        Point3 p12 = p1 + (p2 - p1)/2;
+        Point3 p20 = p2 + (p0 - p2)/2;
+
+        setTriangle(p0, p01, p20);
+        setTriangle(p1, p12, p01);
+        setTriangle(p2, p20, p12);
+        setTriangle(p01, p12, p20);
+        return;
+    }
+
+    inline bool closeEnough(Point3i& p1, Point3i& p2, Point3i& p3) const {
+        Vector3i v12 = p2 - p1;
+        Vector3i v23 = p3 - p2;
+        Vector3i v31 = p1 - p3;
+        return length(v12)+length(v23)+length(v31) <= 4;
+    }
+
+    inline int length(Vector3i& v) const {
+        return abs(v.x) + abs(v.y) + abs(v.z);
+    }
+
+    inline void getGridIndexf(const Point3& p, Point3& p1) const {
+        p1.x = (p.x - m_AABB.min.x) * m_gridSizeRecp;
+        p1.y = (p.y - m_AABB.min.y) * m_gridSizeRecp;
+        p1.z = (p.z - m_AABB.min.z) * m_gridSizeRecp;
+    }
+
+    inline void getGridIndexf2i(const Point3& p, Point3i& pi) const {
+        /* Assumes x,y,z > 0 */
+        pi.x = (int) (p.x);
+        pi.y = (int) (p.y);
+        pi.z = (int) (p.z);
+    }
+    
+    inline Point3i getGridIndexi(const Point& p, Point3i& pi) const {
+        pi.x = (int) floor((p.x - m_AABB.min.x) * m_gridSizeRecp);
+        pi.y = (int) floor((p.y - m_AABB.min.y) * m_gridSizeRecp);
+        pi.z = (int) floor((p.z - m_AABB.min.z) * m_gridSizeRecp);
     }
 
     bool rayIntersect(const Ray &ray, Float &nearT) const
@@ -61,11 +145,10 @@ public:
         if (m_AABB.rayIntersect(ray, nearT, farT))
         {
             Point p = ray.o + ray.d * nearT;
-            int x = (int)floor((p.x - m_AABB.min.x) / m_gridSize + Epsilon);
-            int y = (int)floor((p.y - m_AABB.min.y) / m_gridSize + Epsilon);
-            int z = (int)floor((p.z - m_AABB.min.z) / m_gridSize + Epsilon);
-            while (check(x, y, z))
-            {
+            int x = (int) floor((p.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon);
+            int y = (int) floor((p.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon);
+            int z = (int) floor((p.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
+            while (check(x, y, z)){
                 if (get(x, y, z))
                     return true;
                 int sx = ray.d.x > 0 ? 1 : (ray.d.x < 0 ? -1 : 0);
