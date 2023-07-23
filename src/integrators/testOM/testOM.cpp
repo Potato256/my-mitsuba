@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 64
+#define OMSIZE 128
 #define OMDEPTH OMSIZE / 32
 
 class TestOMIntegrater : public SamplingIntegrator {
@@ -13,7 +13,7 @@ public:
     /// Initialize the integrator with the specified properties
     TestOMIntegrater(const Properties &props) : SamplingIntegrator(props) {
         Spectrum defaultColor;
-        defaultColor.fromLinearRGB(1.f, 1.f, 1.f);
+        defaultColor.fromLinearRGB(0.2f, 0.5f, 0.2f);
         m_color = props.getSpectrum("color", defaultColor);
     }
 private:
@@ -38,16 +38,6 @@ public:
         int samplerResID) {
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
             cameraResID, samplerResID);
-
-        const AABB &sceneAABB = scene->getAABB();
-        /* Find the camera position at t=0 seconds */
-        Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).
-        transformAffine(Point(0.0f));
-        m_maxDist = - std::numeric_limits<Float>::infinity();
-        
-        for (int i=0; i<8; ++i)
-            m_maxDist = std::max(m_maxDist,
-                (cameraPosition - sceneAABB.getCorner(i)).length());
         
         Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
@@ -78,10 +68,14 @@ public:
         // m_om.testSetBallPattern();
         m_om.setScene(scene);
 
-        // std::ostringstream oss;
-        // oss<<
-        // SLog(EDebug, m_om.toString().c_str());
-        // SLog(EDebug, m_om.toString().c_str());
+        /* Find the camera position at t=0 seconds */
+        Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).
+        transformAffine(Point(0.0f));
+        m_maxDist = - std::numeric_limits<Float>::infinity();
+        
+        for (int i=0; i<8; ++i)
+            m_maxDist = std::max(m_maxDist,
+                (cameraPosition - m_baseAABB.getCorner(i)).length());
         
         return true;
     }
@@ -91,7 +85,7 @@ public:
 
         Float nearT;
         if (m_om.rayIntersect(r, nearT)){
-            return Spectrum(1.1f - nearT/m_maxDist) * m_color;
+            return Spectrum(1.01f - nearT/m_maxDist) * m_color;
         }
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;
