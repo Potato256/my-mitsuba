@@ -4,6 +4,7 @@ MTS_NAMESPACE_BEGIN
 
 #define MASK_h27b 0xffffffe0
 #define MASK_l5b 0x0000001f
+#define MASK_l27b 0x07ffffff
 
 
 template<int omSize, int omDepth>
