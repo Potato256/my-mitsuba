@@ -4,6 +4,7 @@ MTS_NAMESPACE_BEGIN
 
 #define MASK_h27b 0xffffffe0
 #define MASK_l5b 0x0000001f
+#define MASK_l27b 0x07ffffff
 
 
 template<int omSize, int omDepth>
@@ -31,7 +32,7 @@ public:
     }
 
     inline void set(int x, int y, int z){
-        bom[x][y][z & MASK_h27b] |= 1 << (z & MASK_l5b);
+        bom[x][y][(z >> 5) & MASK_l27b] |= 1 << (z & MASK_l5b);
     }
 
     inline bool check(int x, int y, int z) const {
@@ -39,7 +40,7 @@ public:
     }
 
     inline bool get(int x, int y, int z) const {
-        return bom[x][y][z & MASK_h27b] & (1 << (z & MASK_l5b));
+        return bom[x][y][(z >> 5) & MASK_l27b] & (1 << (z & MASK_l5b));
     }
 
     bool rayIntersect(const Ray &ray, Float &nearT) const {

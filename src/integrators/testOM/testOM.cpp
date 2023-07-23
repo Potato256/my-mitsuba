@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 32
+#define OMSIZE 64
 #define OMDEPTH OMSIZE / 32
 
 class TestOMIntegrater : public SamplingIntegrator {
