@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 128
+#define OMSIZE 32
 #define OMDEPTH OMSIZE / 32
 
 class TestOMIntegrater : public SamplingIntegrator
@@ -48,6 +48,9 @@ public:
         Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
 
+        std::ostringstream oss;
+        oss << "Meshes: " << meshes.size() << std::endl;
+        SLog(EDebug, oss.str().c_str());
         for (auto m : meshes){
             // SLog(EInfo, m->toString().c_str());
             m_min.x = std::min(m_min.x, m->getAABB().min.x);
@@ -59,9 +62,7 @@ public:
         }
 
         Vector3 d = m_max - m_min;
-        Float r = 0;
-        for (int i = 0; i < 3; ++i)
-            r = std::max(r, d[i]);
+        Float r = d.length();
         r *= 0.5 * 1.01f;
         m_center = m_min + d / 2.0f;
         m_lcorner = m_center - Vector3(r);
@@ -73,10 +74,12 @@ public:
         // m_om.testSetAll();
         // m_om.testSetBallPattern();
         m_om.setScene(scene);
-        test_om.clear();
-        test_om.setAABB(m_baseAABB);
-        test_om.setSize(2 * r);
-        m_om.generateROMA(&test_om, Point2(0.4, 0.6));
+        // test_om.clear();
+        // test_om.setAABB(m_baseAABB);
+        // test_om.setSize(2 * r);
+        // m_om.generateROMA(&test_om, Point2(0.4, 0.6));
+
+        SLog(EDebug, m_om.toString().c_str());
 
         /* Find the camera position at t=0 seconds */
         Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).
@@ -96,7 +99,7 @@ public:
 
         Float nearT;
         if (m_om.rayIntersect(r, nearT)){
-            return Spectrum(1.01f - nearT/m_maxDist) * m_color;
+            return m_color;
         }
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;

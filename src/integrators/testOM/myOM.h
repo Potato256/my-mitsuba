@@ -155,6 +155,7 @@ public:
 
     bool rayIntersect(const Ray &ray, Float &nearT) const
     {
+        /* TBD: When camera is in AABB? */
         Float farT;
         if (m_AABB.rayIntersect(ray, nearT, farT))
         {
@@ -180,7 +181,6 @@ public:
                 Float tx = sx == 0 ? 1e30f : dx * ray.dRcp.x;
                 Float ty = sy == 0 ? 1e30f : dy * ray.dRcp.y;
                 Float tz = sz == 0 ? 1e30f : dz * ray.dRcp.z;
-
                 if (tx < ty)
                 {
                     if (tx < tz)
@@ -208,7 +208,6 @@ public:
                     }
                 }
                 p = ray.o + ray.d * nearT;
-
                 // return false;
             }
         }
@@ -251,7 +250,7 @@ public:
     {
         /* base direction ---> ray direction */
         Quaternion q = concentricMap(uv);
-        SLog(EDebug, "q %f %f %f %f", q.v.x, q.v.y, q.v.z, q.w);
+        // SLog(EDebug, "q %f %f %f %f", q.v.x, q.v.y, q.v.z, q.w);
         
         for (int x = 0; x < omSize; x++)
             for (int y = 0; y < omSize; y++)
