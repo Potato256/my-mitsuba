@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 32
+#define OMSIZE 128
 #define OMDEPTH OMSIZE / 32
 
 class TestOMIntegrater : public SamplingIntegrator {
@@ -53,7 +53,7 @@ public:
         auto meshes = scene->getMeshes();
 
         for (auto m : meshes){
-            SLog(EInfo, m->toString().c_str());
+            // SLog(EInfo, m->toString().c_str());
             m_min.x = std::min(m_min.x, m->getAABB().min.x);
             m_min.y = std::min(m_min.y, m->getAABB().min.y);
             m_min.z = std::min(m_min.z, m->getAABB().min.z);
@@ -75,7 +75,8 @@ public:
         m_om.setAABB(m_baseAABB);
         m_om.setSize(2*r);
         // m_om.testSetAll();
-        m_om.testSetBallPattern();
+        // m_om.testSetBallPattern();
+        m_om.setScene(scene);
 
         // std::ostringstream oss;
         // oss<<
@@ -90,7 +91,7 @@ public:
 
         Float nearT;
         if (m_om.rayIntersect(r, nearT)){
-            return Spectrum(0.8f - nearT/m_maxDist) * m_color;
+            return Spectrum(1.1f - nearT/m_maxDist) * m_color;
         }
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;
