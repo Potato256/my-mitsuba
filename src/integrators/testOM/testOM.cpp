@@ -99,7 +99,7 @@ public:
 
         Float nearT;
         if (m_om.rayIntersect(r, nearT)){
-            return m_color;
+            return Spectrum(1.01f - nearT/m_maxDist) * m_color;
         }
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;
