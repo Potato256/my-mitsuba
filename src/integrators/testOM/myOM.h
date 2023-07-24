@@ -151,13 +151,10 @@ public:
         Float farT;
         if (rayInAABB(ray, nearT) || m_AABB.rayIntersect(ray, nearT, farT))
         {
-            Point p = ray.o + ray.d * nearT;
-            int x = (int)floor((p.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon);
-            int y = (int)floor((p.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon);
-            int z = (int)floor((p.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
-            if (x == omSize) --x;
-            if (y == omSize) --y;
-            if (z == omSize) --z;
+            Point p = ray.o + ray.d * (nearT + Epsilon);
+            int x = (int)floor((p.x - m_AABB.min.x) * m_gridSizeRecp);
+            int y = (int)floor((p.y - m_AABB.min.y) * m_gridSizeRecp);
+            int z = (int)floor((p.z - m_AABB.min.z) * m_gridSizeRecp);
             while (check(x, y, z))
             {
                 if (get(x, y, z))
