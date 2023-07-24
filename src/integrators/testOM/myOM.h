@@ -252,15 +252,16 @@ public:
         /* base direction ---> ray direction */
         Quaternion q = concentricMap(uv);
         SLog(EDebug, "q %f %f %f %f", q.v.x, q.v.y, q.v.z, q.w);
-        
+
         for (int x = 0; x < omSize; x++)
             for (int y = 0; y < omSize; y++)
             {
-                Vector3 x_start(Float(x - omSize / 2), Float(y - omSize / 2), 0.5 - omSize / 2);
-                Vector3 x_end(Float(x - omSize / 2), Float(y - omSize / 2), omSize / 2 - 1.4);
+                Float radiu = Float(omSize - 1) / 2.0;
+                Vector3 x_start(Float(x - radiu), Float(y - radiu), -radiu);
+                Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu);
                 // rotate
-                Vector3 x_start_rot = (q * Quaternion(x_start, 0) * Quaternion(-q.v, q.w)).v + Vector3(omSize / 2);
-                Vector3 x_end_rot = (q * Quaternion(x_end, 0) * Quaternion(-q.v, q.w)).v + Vector3(omSize / 2);
+                Vector3 x_start_rot = (q * Quaternion(x_start, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
+                Vector3 x_end_rot = (q * Quaternion(x_end, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
                 Vector3 v_step = (x_end_rot - x_start_rot) / Float(omSize - 1);
                 for (int i = 0; i < omSize; i++)
                 {
@@ -271,13 +272,12 @@ public:
                     if (check(base_x, base_y, base_z) && get(base_x, base_y, base_z))
                     {
                         setArray(omarray->bom[x][y], x, y, i);
-                        SLog(EDebug, "set %d %d %d", x, y, i);
                     }
                     x_start_rot += v_step;
                 }
             }
-        // SLog(EDebug, "omarray");
-        // SLog(EDebug, omarray->toString().c_str());
+        SLog(EDebug, "omarray");
+        SLog(EDebug, omarray->toString().c_str());
         return q;
     }
 

@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 64
+#define OMSIZE 32
 #define OMDEPTH OMSIZE / 32
 
 class TestOMIntegrater : public SamplingIntegrator
@@ -80,12 +80,12 @@ public:
         m_om.setAABB(m_baseAABB);
         m_om.setSize(2 * r);
         // m_om.testSetAll();
-        // m_om.testSetBallPattern();
-        m_om.setScene(scene);
+        m_om.testSetBallPattern();
+        //m_om.setScene(scene);
         test_om.clear();
         test_om.setAABB(m_baseAABB);
         test_om.setSize(2 * r);
-        m_om.generateROMA(&test_om, Point2(0.4, 0.6));
+        m_om.generateROMA(&test_om, Point2(0.5,0.6));
 
         // std::ostringstream oss;
         // oss<<
@@ -98,7 +98,6 @@ public:
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
     {
-
         Float nearT;
         if (test_om.rayIntersect(r, nearT))
         {
