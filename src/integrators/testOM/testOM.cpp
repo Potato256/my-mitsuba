@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 512
+#define OMSIZE 128
 #define OMDEPTH OMSIZE / 32
 #define OMNUMSQRT 8
 #define OMNUM OMNUMSQRT * OMNUMSQRT
@@ -14,8 +14,7 @@ public:
     MTS_DECLARE_CLASS()
 public:
     /// Initialize the integrator with the specified properties
-    TestOMIntegrater(const Properties &props) : SamplingIntegrator(props)
-    {
+    TestOMIntegrater(const Properties &props) : SamplingIntegrator(props) {
         Spectrum defaultColor;
         // defaultColor.fromLinearRGB(0.2f, 0.5f, 0.2f);
         defaultColor.fromLinearRGB(1.f, 1.f, 1.f);
@@ -36,13 +35,11 @@ public:
         : SamplingIntegrator(stream, manager) {}
 
     /// Serialize to a binary data stream
-    void serialize(Stream *stream, InstanceManager *manager) const
-    {
+    void serialize(Stream *stream, InstanceManager *manager) const {
         SamplingIntegrator::serialize(stream, manager);
     }
 
-    Point2 quat2uv(const Quaternion &q)
-    {
+    Point2 quat2uv(const Quaternion &q) {
         Vector3 v = (q * Quaternion(Vector3(0, 0, 1), 0) * Quaternion(-q.v,q.w)).v;
         Float r = sqrt(1 - v.z * v.z);
         Float phi = atan2(v.y, v.x);
@@ -74,8 +71,7 @@ public:
         return Point2((a + 1) / 2, (b + 1) / 2);
     }
 
-    int nearestOMindex(const Ray& r)
-    {
+    int nearestOMindex(const Ray& r) {
         Quaternion q = Quaternion::fromDirectionPair(Vector(0, 0, 1), r.d);
         Point2 uv = quat2uv(q);
         return int(floor(uv.x * OMNUMSQRT - 0.5)) + int(floor(uv.y * OMNUMSQRT - 0.5)) * OMNUMSQRT;
@@ -105,7 +101,7 @@ public:
 
         Vector3 d = m_max - m_min;
         Float r = d.length();
-        r *= 0.5 * 1.01f;
+        r *= 0.5 * 1.001f;
         m_center = m_min + d / 2.0f;
         m_lcorner = m_center - Vector3(r);
         m_baseAABB = AABB(m_lcorner, m_lcorner + Vector3(2 * r));
@@ -114,6 +110,7 @@ public:
         m_om.setAABB(m_baseAABB);
         m_om.setSize(2 * r);
         // m_om.testSetAll();
+        // m_om.testSetBoxPattern();
         // m_om.testSetBallPattern();
         m_om.setScene(scene);
         // test_om.clear();
@@ -121,10 +118,6 @@ public:
         // test_om.setSize(2 * r);
         // m_om.generateROMA(&test_om, Point2(0.5, 0.6));
 
-        // std::ostringstream oss;
-        // oss << "Meshes: " << meshes.size() << std::endl;
-        // oss << m_om.toString() << std::endl;
-        // SLog(EDebug, oss.str().c_str());
 
         /* Find the camera position at t=0 seconds */
         Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).transformAffine(Point(0.0f));
@@ -134,16 +127,23 @@ public:
             m_maxDist = std::max(m_maxDist,
                                  (cameraPosition - scene->getAABB().getCorner(i)).length());
 
+        std::ostringstream oss;
+        oss << "Meshes: " << meshes.size() << std::endl;
+        oss << m_om.toString() << std::endl;
+        oss << "Max distance: " << m_maxDist << std::endl;
+        oss << cameraPosition.toString() << std::endl;
+        SLog(EDebug, oss.str().c_str());
+
         return true;
     }
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
-    Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
-    {
+    Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
         Float nearT;
         if (m_om.rayIntersect(r, nearT))
         {
-            return Spectrum(1.01f - nearT / m_maxDist) * m_color;
+            return Spectrum(1.01f - nearT / m_maxDist) *  m_color;
+            // return m_color;
         }
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;

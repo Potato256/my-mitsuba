@@ -7,8 +7,7 @@ MTS_NAMESPACE_BEGIN
 #define MASK_l5b 0x0000001f
 
 template <int omSize, int omDepth>
-class OccupancyMap
-{
+class OccupancyMap {
 private:
     int bom[omSize][omSize][omDepth];
     AABB m_AABB;
@@ -21,19 +20,16 @@ private:
 public:
     OccupancyMap() {}
 
-    inline void clear()
-    {
+    inline void clear() {
         memset(bom, 0, sizeof(bom));
     }
 
-    inline void setAABB(const AABB &aabb)
-    {
+    inline void setAABB(const AABB &aabb) {
         m_AABB = aabb;
         m_center = Vector(m_AABB.min + (m_AABB.max - m_AABB.min) / 2);
     }
 
-    inline void setSize(const Float d)
-    {
+    inline void setSize(const Float d) {
         m_size = d;
         m_gridSize = m_size / omSize;
         m_gridSizeRecp = 1 / m_gridSize;
@@ -159,6 +155,9 @@ public:
             int x = (int)floor((p.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon);
             int y = (int)floor((p.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon);
             int z = (int)floor((p.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
+            if (x == omSize) --x;
+            if (y == omSize) --y;
+            if (z == omSize) --z;
             while (check(x, y, z))
             {
                 if (get(x, y, z))
@@ -210,8 +209,7 @@ public:
         return false;
     }
 
-    bool Trace(const Ray &ray) const
-    {
+    bool Trace(const Ray &ray) const {
         Quaternion q_inverse = Quaternion(-m_q.v, m_q.w);
         Vector3 o_aligned = (q_inverse * Quaternion(ray.o - m_center, 0) * m_q).v + m_center;
         Vector3 d_aligned = (q_inverse * Quaternion(ray.d, 0) * m_q).v;
@@ -227,8 +225,7 @@ public:
         return false;
     }
 
-    Quaternion concentricMap(const Point2 &uv)
-    {
+    Quaternion concentricMap(const Point2 &uv) {
         Float x = uv.x * 2 - 1;
         Float y = uv.y * 2 - 1;
         Float phi, r;
@@ -259,8 +256,7 @@ public:
         return normalize(Quaternion::fromDirectionPair(Vector3(0, 0, 1), Vector3(cos(phi) * r, sin(phi) * r, sqrt(1 - r * r))));
     }
 
-    Quaternion generateROMA(OccupancyMap *omarray, Point2 uv)
-    {
+    Quaternion generateROMA(OccupancyMap *omarray, Point2 uv) {
         /* base direction ---> ray direction */
         Quaternion q = concentricMap(uv);
         omarray->m_q = q;
@@ -294,16 +290,14 @@ public:
         return q;
     }
 
-    void testSetAll()
-    {
+    void testSetAll() {
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
                 for (int k = 0; k < omSize; ++k)
                     set(i, j, k);
     }
 
-    void testSetBoxPattern()
-    {
+    void testSetBoxPattern() {
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
                 for (int k = 0; k < omSize; ++k)
@@ -311,8 +305,7 @@ public:
                         set(i, j, k);
     }
 
-    void testSetBallPattern()
-    {
+    void testSetBallPattern() {
         int c = omSize / 2;
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
@@ -324,8 +317,7 @@ public:
                 }
     }
 
-    std::string toString() const
-    {
+    std::string toString() const {
         std::ostringstream oss;
         oss << "BOM[" << endl
             << "  AABB: " << m_AABB.toString() << "," << endl
