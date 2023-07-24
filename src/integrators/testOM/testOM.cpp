@@ -15,7 +15,7 @@ public:
     TestOMIntegrater(const Properties &props) : SamplingIntegrator(props)
     {
         Spectrum defaultColor;
-        defaultColor.fromLinearRGB(1.f, 1.f, 1.f);
+        defaultColor.fromLinearRGB(0.2f, 0.5f, 0.2f);
         m_color = props.getSpectrum("color", defaultColor);
     }
 
@@ -43,20 +43,14 @@ public:
                     int samplerResID)
     {
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
-                                       cameraResID, samplerResID);
-
-        const AABB &sceneAABB = scene->getAABB();
-        /* Find the camera position at t=0 seconds */
-        Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).transformAffine(Point(0.0f));
-        m_maxDist = -std::numeric_limits<Float>::infinity();
-
-        for (int i = 0; i < 8; ++i)
-            m_maxDist = std::max(m_maxDist,
-                                 (cameraPosition - sceneAABB.getCorner(i)).length());
-
+            cameraResID, samplerResID);
+        
         Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
 
+        std::ostringstream oss;
+        oss << "Meshes: " << meshes.size() << std::endl;
+        SLog(EDebug, oss.str().c_str());
         for (auto m : meshes){
             // SLog(EInfo, m->toString().c_str());
             m_min.x = std::min(m_min.x, m->getAABB().min.x);
@@ -68,9 +62,7 @@ public:
         }
 
         Vector3 d = m_max - m_min;
-        Float r = 0;
-        for (int i = 0; i < 3; ++i)
-            r = std::max(r, d[i]);
+        Float r = d.length();
         r *= 0.5 * 1.01f;
         m_center = m_min + d / 2.0f;
         m_lcorner = m_center - Vector3(r);
@@ -87,11 +79,17 @@ public:
         test_om.setSize(2 * r);
         m_om.generateROMA(&test_om, Point2(0.5,0.6));
 
-        // std::ostringstream oss;
-        // oss<<
-        // SLog(EDebug, m_om.toString().c_str());
-        // SLog(EDebug, m_om.toString().c_str());
+        SLog(EDebug, m_om.toString().c_str());
 
+        /* Find the camera position at t=0 seconds */
+        Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).
+        transformAffine(Point(0.0f));
+        m_maxDist = - std::numeric_limits<Float>::infinity();
+        
+        for (int i=0; i<8; ++i)
+            m_maxDist = std::max(m_maxDist,
+                (cameraPosition - m_baseAABB.getCorner(i)).length());
+        
         return true;
     }
 
@@ -99,9 +97,8 @@ public:
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
     {
         Float nearT;
-        if (test_om.rayIntersect(r, nearT))
-        {
-            return Spectrum(0.8f - nearT / m_maxDist) * m_color;
+        if (m_om.rayIntersect(r, nearT)){
+            return Spectrum(1.01f - nearT/m_maxDist) * m_color;
         }
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;
