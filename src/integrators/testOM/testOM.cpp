@@ -5,6 +5,8 @@ MTS_NAMESPACE_BEGIN
 
 #define OMSIZE 32
 #define OMDEPTH OMSIZE / 32
+#define OMNUMSQRT 8
+#define OMNUM OMNUMSQRT * OMNUMSQRT
 
 class TestOMIntegrater : public SamplingIntegrator
 {
@@ -25,7 +27,8 @@ private:
     AABB m_baseAABB;
     OccupancyMap<OMSIZE, OMDEPTH> m_om;
     OccupancyMap<OMSIZE, OMDEPTH> test_om;
-
+    OccupancyMap<OMSIZE, OMDEPTH> roma[OMNUM];
+    
 public:
     /// Unserialize from a binary data stream
     TestOMIntegrater(Stream *stream, InstanceManager *manager)
@@ -37,21 +40,62 @@ public:
         SamplingIntegrator::serialize(stream, manager);
     }
 
+    Point2 quat2uv(const Quaternion &q)
+    {
+        Vector3 v = (q * Quaternion(Vector3(0, 0, 1), 0) * Quaternion(-q.v,q.w)).v;
+        Float r = sqrt(1 - v.z * v.z);
+        Float phi = atan2(v.y, v.x);
+        if(r == 0)
+            return Point2(0, 0);
+        Float a, b;
+        if (phi < -M_PI / 4)
+            phi += 2 * M_PI;
+        if (phi < M_PI / 4)
+        {
+            a = r;
+            b = phi * a / (M_PI / 4);
+        }
+        else if (phi < M_PI * 3 / 4)
+        {
+            b = r;
+            a = -(phi - M_PI / 2) * b / (M_PI / 4);
+        }
+        else if (phi < M_PI * 5 / 4)
+        {
+            a = -r;
+            b = (phi - M_PI) * a / (M_PI / 4);
+        }
+        else
+        {
+            b = -r;
+            a = -(phi - M_PI * 3 / 2) * b / (M_PI / 4);
+        }
+        return Point2((a + 1) / 2, (b + 1) / 2);
+    }
+
+    int nearestOMindex(const Ray& r)
+    {
+        Quaternion q = Quaternion::fromDirectionPair(Vector(0, 0, 1), r.d);
+        Point2 uv = quat2uv(q);
+        return int(floor(uv.x * OMNUMSQRT - 0.5)) + int(floor(uv.y * OMNUMSQRT - 0.5)) * OMNUMSQRT;
+    }
+
     /// Preprocess function -- called on the initiating machine
     bool preprocess(const Scene *scene, RenderQueue *queue,
                     const RenderJob *job, int sceneResID, int cameraResID,
                     int samplerResID)
     {
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
-            cameraResID, samplerResID);
-        
+                                       cameraResID, samplerResID);
+
         Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
 
         std::ostringstream oss;
         oss << "Meshes: " << meshes.size() << std::endl;
         SLog(EDebug, oss.str().c_str());
-        for (auto m : meshes){
+        for (auto m : meshes)
+        {
             // SLog(EInfo, m->toString().c_str());
             m_min.x = std::min(m_min.x, m->getAABB().min.x);
             m_min.y = std::min(m_min.y, m->getAABB().min.y);
@@ -73,23 +117,20 @@ public:
         m_om.setSize(2 * r);
         // m_om.testSetAll();
         m_om.testSetBallPattern();
-        //m_om.setScene(scene);
+        // m_om.setScene(scene);
         test_om.clear();
         test_om.setAABB(m_baseAABB);
         test_om.setSize(2 * r);
-        m_om.generateROMA(&test_om, Point2(0.5,0.6));
-
-        SLog(EDebug, m_om.toString().c_str());
+        m_om.generateROMA(&test_om, Point2(0.5, 0.6));
 
         /* Find the camera position at t=0 seconds */
-        Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).
-        transformAffine(Point(0.0f));
-        m_maxDist = - std::numeric_limits<Float>::infinity();
-        
-        for (int i=0; i<8; ++i)
+        Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).transformAffine(Point(0.0f));
+        m_maxDist = -std::numeric_limits<Float>::infinity();
+
+        for (int i = 0; i < 8; ++i)
             m_maxDist = std::max(m_maxDist,
-                (cameraPosition - m_baseAABB.getCorner(i)).length());
-        
+                                 (cameraPosition - m_baseAABB.getCorner(i)).length());
+
         return true;
     }
 
@@ -97,8 +138,9 @@ public:
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
     {
         Float nearT;
-        if (m_om.rayIntersect(r, nearT)){
-            return Spectrum(1.01f - nearT/m_maxDist) * m_color;
+        if (test_om.rayIntersect(r, nearT))
+        {
+            return Spectrum(1.01f - nearT / m_maxDist) * m_color;
         }
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;

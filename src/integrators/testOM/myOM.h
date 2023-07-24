@@ -5,7 +5,6 @@ MTS_NAMESPACE_BEGIN
 #define MASK_h27b 0xffffffe0
 #define MASK_l27b 0x07ffffff
 #define MASK_l5b 0x0000001f
-#define PI 3.1415926535
 
 template <int omSize, int omDepth>
 class OccupancyMap
@@ -16,6 +15,8 @@ private:
     Float m_size;
     Float m_gridSize;
     Float m_gridSizeRecp;
+    Vector3 m_center;
+    Quaternion m_q;
 
 public:
     OccupancyMap() {}
@@ -28,6 +29,7 @@ public:
     inline void setAABB(const AABB &aabb)
     {
         m_AABB = aabb;
+        m_center = Vector(m_AABB.min + (m_AABB.max - m_AABB.min) / 2);
     }
 
     inline void setSize(const Float d)
@@ -146,7 +148,7 @@ public:
         pi.z = (int)(p.z);
     }
 
-    inline Point3i getGridIndexi(const Point &p, Point3i &pi) const
+    inline void getGridIndexi(const Point &p, Point3i &pi) const
     {
         pi.x = (int)floor((p.x - m_AABB.min.x) * m_gridSizeRecp);
         pi.y = (int)floor((p.y - m_AABB.min.y) * m_gridSizeRecp);
@@ -214,7 +216,24 @@ public:
         return false;
     }
 
-    static Quaternion concentricMap(const Point2 &uv)
+    bool Trace(const Ray &ray) const
+    {
+        Quaternion q_inverse = Quaternion(-m_q.v, m_q.w);
+        Vector3 o_aligned = (q_inverse * Quaternion(ray.o - m_center, 0) * m_q).v + m_center;
+        Vector3 d_aligned = (q_inverse * Quaternion(ray.d, 0) * m_q).v;
+        SLog(EDebug, "o_aligned %f %f %f", o_aligned.x, o_aligned.y, o_aligned.z);
+        SLog(EDebug, "d_aligned %f %f %f", d_aligned.x, d_aligned.y, d_aligned.z);
+        int x = (int)floor((o_aligned.x - m_AABB.min.x) * m_gridSizeRecp - 0.5);
+        int y = (int)floor((o_aligned.y - m_AABB.min.y) * m_gridSizeRecp - 0.5);
+        int z = (int)floor((o_aligned.z - m_AABB.min.z) * m_gridSizeRecp - 0.5);
+        //any hit
+        for(int i=0;i<omDepth;i++)
+            if(get(x, y, i))
+                return true;
+        return false;
+    }
+
+    Quaternion concentricMap(const Point2 &uv)
     {
         Float x = uv.x * 2 - 1;
         Float y = uv.y * 2 - 1;
@@ -223,23 +242,23 @@ public:
             if (x > y)
             {
                 r = x;
-                phi = (PI / 4) * (y / x);
+                phi = (M_PI / 4) * (y / x);
             }
             else
             {
                 r = y;
-                phi = (PI / 4) * (2 - x / y);
+                phi = (M_PI / 4) * (2 - x / y);
             }
         else if (x < y)
         {
             r = -x;
-            phi = (PI / 4) * (4 + y / x);
+            phi = (M_PI / 4) * (4 + y / x);
         }
         else
         {
             r = -y;
             if (y != 0)
-                phi = (PI / 4) * (6 - x / y);
+                phi = (M_PI / 4) * (6 - x / y);
             else
                 phi = 0;
         }
@@ -250,23 +269,24 @@ public:
     {
         /* base direction ---> ray direction */
         Quaternion q = concentricMap(uv);
+        omarray->m_q = q;
         // SLog(EDebug, "q %f %f %f %f", q.v.x, q.v.y, q.v.z, q.w);
 
         for (int x = 0; x < omSize; x++)
             for (int y = 0; y < omSize; y++)
             {
                 Float radiu = Float(omSize - 1) / 2.0;
-                Vector3 x_start(Float(x - radiu), Float(y - radiu), -radiu);
-                Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu);
+                Vector3 x_start(Float(x - radiu), Float(y - radiu), 0.5 - radiu);
+                Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu + 0.5);
                 // rotate
                 Vector3 x_start_rot = (q * Quaternion(x_start, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
                 Vector3 x_end_rot = (q * Quaternion(x_end, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
                 Vector3 v_step = (x_end_rot - x_start_rot) / Float(omSize - 1);
                 for (int i = 0; i < omSize; i++)
                 {
-                    int base_x = (int)floor(x_start_rot.x);
-                    int base_y = (int)floor(x_start_rot.y);
-                    int base_z = (int)floor(x_start_rot.z);
+                    int base_x = (int)floor(x_start_rot.x + Epsilon);
+                    int base_y = (int)floor(x_start_rot.y + Epsilon);
+                    int base_z = (int)floor(x_start_rot.z + Epsilon);
                     // SLog(EDebug, "base %d %d %d", base_x, base_y, base_z);
                     if (check(base_x, base_y, base_z) && get(base_x, base_y, base_z))
                     {
