@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 32
+#define OMSIZE 512
 #define OMDEPTH OMSIZE / 32
 #define OMNUMSQRT 8
 #define OMNUM OMNUMSQRT * OMNUMSQRT
@@ -17,7 +17,8 @@ public:
     TestOMIntegrater(const Properties &props) : SamplingIntegrator(props)
     {
         Spectrum defaultColor;
-        defaultColor.fromLinearRGB(0.2f, 0.5f, 0.2f);
+        // defaultColor.fromLinearRGB(0.2f, 0.5f, 0.2f);
+        defaultColor.fromLinearRGB(1.f, 1.f, 1.f);
         m_color = props.getSpectrum("color", defaultColor);
     }
 
@@ -91,9 +92,6 @@ public:
         Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
 
-        std::ostringstream oss;
-        oss << "Meshes: " << meshes.size() << std::endl;
-        SLog(EDebug, oss.str().c_str());
         for (auto m : meshes)
         {
             // SLog(EInfo, m->toString().c_str());
@@ -116,12 +114,17 @@ public:
         m_om.setAABB(m_baseAABB);
         m_om.setSize(2 * r);
         // m_om.testSetAll();
-        m_om.testSetBallPattern();
-        // m_om.setScene(scene);
-        test_om.clear();
-        test_om.setAABB(m_baseAABB);
-        test_om.setSize(2 * r);
-        m_om.generateROMA(&test_om, Point2(0.5, 0.6));
+        // m_om.testSetBallPattern();
+        m_om.setScene(scene);
+        // test_om.clear();
+        // test_om.setAABB(m_baseAABB);
+        // test_om.setSize(2 * r);
+        // m_om.generateROMA(&test_om, Point2(0.5, 0.6));
+
+        // std::ostringstream oss;
+        // oss << "Meshes: " << meshes.size() << std::endl;
+        // oss << m_om.toString() << std::endl;
+        // SLog(EDebug, oss.str().c_str());
 
         /* Find the camera position at t=0 seconds */
         Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).transformAffine(Point(0.0f));
@@ -129,7 +132,7 @@ public:
 
         for (int i = 0; i < 8; ++i)
             m_maxDist = std::max(m_maxDist,
-                                 (cameraPosition - m_baseAABB.getCorner(i)).length());
+                                 (cameraPosition - scene->getAABB().getCorner(i)).length());
 
         return true;
     }
@@ -138,7 +141,7 @@ public:
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
     {
         Float nearT;
-        if (test_om.rayIntersect(r, nearT))
+        if (m_om.rayIntersect(r, nearT))
         {
             return Spectrum(1.01f - nearT / m_maxDist) * m_color;
         }

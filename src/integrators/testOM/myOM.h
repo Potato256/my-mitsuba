@@ -39,50 +39,41 @@ public:
         m_gridSizeRecp = 1 / m_gridSize;
     }
 
-    inline void set(int x, int y, int z)
-    {
+    inline void set(int x, int y, int z) {
         bom[x][y][(z & MASK_h27b) >> 5] |= 1 << (z & MASK_l5b);
     }
 
-    inline void set(Point3i p)
-    {
+    inline void set(Point3i p) {
         set(p.x, p.y, p.z);
     }
 
-    inline void setArray(int *array, int x, int y, int z)
-    {
+    inline void setArray(int *array, int x, int y, int z) {
         array[(z >> 5) & MASK_l27b] |= 1 << (z & MASK_l5b);
     }
 
-    inline bool check(int x, int y, int z) const
-    {
+    inline bool check(int x, int y, int z) const {
         return x >= 0 && x < omSize && y >= 0 && y < omSize && z >= 0 && z < omSize;
     }
 
-    inline bool check(Point3i p) const
-    {
+    inline bool check(Point3i p) const {
         return check(p.x, p.y, p.z);
     }
 
-    inline bool get(int x, int y, int z) const
-    {
+    inline bool get(int x, int y, int z) const {
         return bom[x][y][(z & MASK_h27b) >> 5] & (1 << (z & MASK_l5b));
     }
 
-    inline void get(Point3i p) const
-    {
+    inline void get(Point3i p) const {
         get(p.x, p.y, p.z);
     }
 
-    inline void setScene(const Scene *scene)
-    {
+    inline void setScene(const Scene *scene) {
         auto meshes = scene->getMeshes();
         for (auto m : meshes)
             setMesh(m);
     }
 
-    inline void setMesh(const TriMesh *mesh)
-    {
+    inline void setMesh(const TriMesh *mesh) {
         const Triangle *tri = mesh->getTriangles();
         const Point3 *pos = mesh->getVertexPositions();
         int triCnt = (int)mesh->getTriangleCount();
@@ -97,8 +88,7 @@ public:
         return;
     }
 
-    void setTriangle(Point3 &p0, Point3 &p1, Point3 &p2, int depth = 0)
-    {
+    void setTriangle(Point3 &p0, Point3 &p1, Point3 &p2, int depth = 0) {
         Point3i p0i, p1i, p2i;
         getGridIndexf2i(p0, p0i);
         getGridIndexf2i(p1, p1i);
@@ -120,46 +110,50 @@ public:
         return;
     }
 
-    inline bool closeEnough(Point3i &p1, Point3i &p2, Point3i &p3) const
-    {
+    inline bool closeEnough(Point3i &p1, Point3i &p2, Point3i &p3) const {
         Vector3i v12 = p2 - p1;
         Vector3i v23 = p3 - p2;
         Vector3i v31 = p1 - p3;
         return length(v12) + length(v23) + length(v31) <= 4;
     }
 
-    inline int length(Vector3i &v) const
-    {
+    inline int length(Vector3i &v) const {
         return abs(v.x) + abs(v.y) + abs(v.z);
     }
 
-    inline void getGridIndexf(const Point3 &p, Point3 &p1) const
-    {
+    inline void getGridIndexf(const Point3 &p, Point3 &p1) const {
         p1.x = (p.x - m_AABB.min.x) * m_gridSizeRecp;
         p1.y = (p.y - m_AABB.min.y) * m_gridSizeRecp;
         p1.z = (p.z - m_AABB.min.z) * m_gridSizeRecp;
     }
 
-    inline void getGridIndexf2i(const Point3 &p, Point3i &pi) const
-    {
+    inline void getGridIndexf2i(const Point3 &p, Point3i &pi) const {
         /* Assumes x,y,z > 0 */
         pi.x = (int)(p.x);
         pi.y = (int)(p.y);
         pi.z = (int)(p.z);
     }
 
-    inline void getGridIndexi(const Point &p, Point3i &pi) const
-    {
+    inline void getGridIndexi(const Point &p, Point3i &pi) const {
         pi.x = (int)floor((p.x - m_AABB.min.x) * m_gridSizeRecp);
         pi.y = (int)floor((p.y - m_AABB.min.y) * m_gridSizeRecp);
         pi.z = (int)floor((p.z - m_AABB.min.z) * m_gridSizeRecp);
     }
 
-    bool rayIntersect(const Ray &ray, Float &nearT) const
-    {
+    bool rayInAABB(const Ray &ray, Float &nearT) const {
+        if (ray.o.x > m_AABB.min.x && ray.o.x < m_AABB.max.x &&
+            ray.o.y > m_AABB.min.y && ray.o.y < m_AABB.max.y &&
+            ray.o.z > m_AABB.min.z && ray.o.z < m_AABB.max.z) {
+            nearT = 0;
+            return true;
+        }
+        return false;
+    }
+    
+    bool rayIntersect(const Ray &ray, Float &nearT) const {
         /* TBD: When camera is in AABB? */
         Float farT;
-        if (m_AABB.rayIntersect(ray, nearT, farT))
+        if (rayInAABB(ray, nearT) || m_AABB.rayIntersect(ray, nearT, farT))
         {
             Point p = ray.o + ray.d * nearT;
             int x = (int)floor((p.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon);
