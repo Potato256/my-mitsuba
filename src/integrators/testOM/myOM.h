@@ -15,10 +15,10 @@ private:
     Float m_size;
     Float m_gridSize;
     Float m_gridSizeRecp;
-    Vector3 m_center;
-    Quaternion m_q;
 
 public:
+    Quaternion m_q;
+    Vector3 m_center;
     OccupancyMap() {}
 
     inline void clear()
@@ -72,6 +72,14 @@ public:
     inline void get(Point3i p) const
     {
         get(p.x, p.y, p.z);
+    }
+
+    inline bool anyhit(int x, int y) const
+    {
+        for (int i = 0; i < omDepth; i++)
+            if (bom[x][y][i])
+                return true;
+        return false;
     }
 
     inline void setScene(const Scene *scene)
@@ -216,21 +224,39 @@ public:
         return false;
     }
 
-    bool Trace(const Ray &ray) const
+    bool Trace(const Ray &ray, Float &nearT) const
     {
-        Quaternion q_inverse = Quaternion(-m_q.v, m_q.w);
-        Vector3 o_aligned = (q_inverse * Quaternion(ray.o - m_center, 0) * m_q).v + m_center;
-        Vector3 d_aligned = (q_inverse * Quaternion(ray.d, 0) * m_q).v;
-        SLog(EDebug, "o_aligned %f %f %f", o_aligned.x, o_aligned.y, o_aligned.z);
-        SLog(EDebug, "d_aligned %f %f %f", d_aligned.x, d_aligned.y, d_aligned.z);
-        int x = (int)floor((o_aligned.x - m_AABB.min.x) * m_gridSizeRecp - 0.5);
-        int y = (int)floor((o_aligned.y - m_AABB.min.y) * m_gridSizeRecp - 0.5);
-        int z = (int)floor((o_aligned.z - m_AABB.min.z) * m_gridSizeRecp - 0.5);
-        //any hit
-        for(int i=0;i<omDepth;i++)
-            if(get(x, y, i))
-                return true;
-        return false;
+        // SLog(EDebug, "m_q %f %f %f %f", m_q.v.x, m_q.v.y, m_q.v.z, m_q.w);
+        // SLog(EDebug, "o %f %f %f", ray.o.x, ray.o.y, ray.o.z);
+        // SLog(EDebug, "d %f %f %f", ray.d.x, ray.d.y, ray.d.z);
+        // SLog(EDebug, "center %f %f %f", m_center.x, m_center.y, m_center.z);
+        Vector3 o_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.o - m_center), 0) * m_q).v + m_center;
+        Vector3 d_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.d), 0) * m_q).v;
+        // Point o_aligned = ray.o;
+
+        // if (d_aligned.z < 0.95)
+        // {
+        // SLog(EDebug, "o_aligned %f %f %f", o_aligned.x, o_aligned.y, o_aligned.z);
+        // SLog(EDebug, "d_aligned %f %f %f", d_aligned.x, d_aligned.y, d_aligned.z);
+        // }
+        // Ray ray_aligned(ray);
+        // ray_aligned.d = d_aligned;
+        // ray_aligned.o = Point(o_aligned.x, o_aligned.y, o_aligned.z);
+        // // SLog(EDebug, "rayintersect %d", rayIntersect(ray, nearT));
+        // if (!rayIntersect(ray_aligned, nearT))
+        //     return false;
+        // return true;
+
+        int x = (int)floor((o_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon);
+        int y = (int)floor((o_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon);
+        int z = (int)floor((o_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
+        // SLog(EDebug, "x %d y %d z %d", x, y, z);
+
+        if (!check(x, y, 0))
+            return false;
+
+        // any hit
+        return anyhit(x, y);
     }
 
     Quaternion concentricMap(const Point2 &uv)
@@ -269,15 +295,15 @@ public:
     {
         /* base direction ---> ray direction */
         Quaternion q = concentricMap(uv);
-        omarray->m_q = q;
+        omarray->m_q = Quaternion(q);
         // SLog(EDebug, "q %f %f %f %f", q.v.x, q.v.y, q.v.z, q.w);
 
         for (int x = 0; x < omSize; x++)
             for (int y = 0; y < omSize; y++)
             {
-                Float radiu = Float(omSize - 1) / 2.0;
+                Float radiu = Float(omSize) / 2.0;
                 Vector3 x_start(Float(x - radiu), Float(y - radiu), 0.5 - radiu);
-                Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu + 0.5);
+                Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu - 0.5);
                 // rotate
                 Vector3 x_start_rot = (q * Quaternion(x_start, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
                 Vector3 x_end_rot = (q * Quaternion(x_end, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
@@ -295,8 +321,8 @@ public:
                     x_start_rot += v_step;
                 }
             }
-        SLog(EDebug, "omarray");
-        SLog(EDebug, omarray->toString().c_str());
+        // SLog(EDebug, "omarray");
+        // SLog(EDebug, omarray->toString().c_str());
         return q;
     }
 
@@ -310,11 +336,15 @@ public:
 
     void testSetBoxPattern()
     {
+        int c = omSize / 2;
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
                 for (int k = 0; k < omSize; ++k)
-                    if ((i + j + k) & 1)
+                {
+                    // if ((i + j + k) & 1)
+                    if (check(2 * i - c, 2 * j - c, 2 * k - c))
                         set(i, j, k);
+                }
     }
 
     void testSetBallPattern()
@@ -325,7 +355,7 @@ public:
                 for (int k = 0; k < omSize; ++k)
                 {
                     int r2 = (i - c) * (i - c) + (j - c) * (j - c) + (k - c) * (k - c);
-                    if (r2 < omSize * omSize / 4)
+                    if (r2 < omSize * omSize / 16)
                         set(i, j, k);
                 }
     }

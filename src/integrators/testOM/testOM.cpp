@@ -5,8 +5,8 @@ MTS_NAMESPACE_BEGIN
 
 #define OMSIZE 32
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 8
-#define OMNUM OMNUMSQRT * OMNUMSQRT
+#define OMNUMSQRT 64
+#define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 class TestOMIntegrater : public SamplingIntegrator
 {
@@ -28,7 +28,7 @@ private:
     OccupancyMap<OMSIZE, OMDEPTH> m_om;
     OccupancyMap<OMSIZE, OMDEPTH> test_om;
     OccupancyMap<OMSIZE, OMDEPTH> roma[OMNUM];
-    
+
 public:
     /// Unserialize from a binary data stream
     TestOMIntegrater(Stream *stream, InstanceManager *manager)
@@ -40,13 +40,13 @@ public:
         SamplingIntegrator::serialize(stream, manager);
     }
 
-    Point2 quat2uv(const Quaternion &q)
+    Point2 quat2uv(const Quaternion &q) const
     {
-        Vector3 v = (q * Quaternion(Vector3(0, 0, 1), 0) * Quaternion(-q.v,q.w)).v;
+        Vector3 v = (q * Quaternion(Vector3(0, 0, 1), 0) * Quaternion(-q.v, q.w)).v;
         Float r = sqrt(1 - v.z * v.z);
         Float phi = atan2(v.y, v.x);
-        if(r == 0)
-            return Point2(0, 0);
+        if (r == 0)
+            return Point2(0.5, 0.5);
         Float a, b;
         if (phi < -M_PI / 4)
             phi += 2 * M_PI;
@@ -73,11 +73,18 @@ public:
         return Point2((a + 1) / 2, (b + 1) / 2);
     }
 
-    int nearestOMindex(const Ray& r)
+    int nearestOMindex(const Ray &r) const
     {
-        Quaternion q = Quaternion::fromDirectionPair(Vector(0, 0, 1), r.d);
+        Vector3 d = r.d;
+        if (d.z < 0)
+            d = -d;
+        Quaternion q = Quaternion::fromDirectionPair(Vector(0, 0, 1), d);
         Point2 uv = quat2uv(q);
-        return int(floor(uv.x * OMNUMSQRT - 0.5)) + int(floor(uv.y * OMNUMSQRT - 0.5)) * OMNUMSQRT;
+        if (uv.x > 0.999999)
+            uv.x = 0.999999;
+        if (uv.y > 0.999999)
+            uv.y = 0.999999;
+        return int(floor(uv.x * OMNUMSQRT)) * OMNUMSQRT + int(floor(uv.y * OMNUMSQRT));
     }
 
     /// Preprocess function -- called on the initiating machine
@@ -117,11 +124,36 @@ public:
         m_om.setSize(2 * r);
         // m_om.testSetAll();
         m_om.testSetBallPattern();
+        // m_om.testSetBoxPattern();
         // m_om.setScene(scene);
+
+        /* init roma */
+        for (int i = 0; i < OMNUMSQRT; i++)
+            for (int j = 0; j < OMNUMSQRT; j++)
+            {
+                roma[i * OMNUMSQRT + j].clear();
+                roma[i * OMNUMSQRT + j].setAABB(m_baseAABB);
+                roma[i * OMNUMSQRT + j].setSize(2 * r);
+                m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + 0.5) / OMNUMSQRT, (j + 0.5) / OMNUMSQRT));
+            }
         test_om.clear();
         test_om.setAABB(m_baseAABB);
         test_om.setSize(2 * r);
-        m_om.generateROMA(&test_om, Point2(0.5, 0.6));
+        m_om.generateROMA(&test_om, Point2(0.2, 0.5));
+        Ray test_r(m_center - Vector3(0, 0, 100), normalize(Vector(1, 0, 1)), 0);
+        // SLog(EInfo, "test_om: %d", roma[nearestOMindex(test_r)].Trace(test_r));
+
+        SLog(EInfo, "nearestOMindex: %d", nearestOMindex(test_r));
+        test_r.d = normalize(Vector(-1, 0, 1));
+        SLog(EInfo, "nearestOMindex: %d", nearestOMindex(test_r));
+        test_r.d = normalize(Vector(0, 1, 1));
+        SLog(EInfo, "nearestOMindex: %d", nearestOMindex(test_r));
+        test_r.d = normalize(Vector(0, -1, 1));
+        SLog(EInfo, "nearestOMindex: %d", nearestOMindex(test_r));
+        // Point2 uv = quat2uv(Quaternion::fromDirectionPair(Vector(0, 0, 1), test_r.d));
+        // Point2 uv2 = quat2uv(roma[nearestOMindex(test_r)].m_q);
+        // SLog(EInfo, "uv: %f %f", uv.x, uv.y);
+        // SLog(EInfo, "uv2: %f %f", uv2.x, uv2.y);
 
         /* Find the camera position at t=0 seconds */
         Point cameraPosition = scene->getSensor()->getWorldTransform()->eval(0).transformAffine(Point(0.0f));
@@ -138,10 +170,23 @@ public:
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
     {
         Float nearT;
-        if (test_om.rayIntersect(r, nearT))
+        // if (test_om.rayIntersect(r, nearT))
+        // {
+        //     return Spectrum(1.01f - nearT / m_maxDist) * m_color;
+        // }
+        // if(r.d.z < 0)
+        // {
+        //     SLog(EInfo, "r.d.z %f", r.d.z);
+        // }
+        int id = nearestOMindex(r);
+
+        // return Spectrum(Float(id) / OMNUM) * m_color;
+        // SLog(EInfo, "id: %d", id);
+        if (roma[id].Trace(r, nearT))
         {
-            return Spectrum(1.01f - nearT / m_maxDist) * m_color;
+            return Spectrum(Float(id) / OMNUM) * m_color;
         }
+
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;
         //     return Spectrum(1.0f - distance/m_maxDist) * m_color;
