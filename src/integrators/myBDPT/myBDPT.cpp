@@ -1,10 +1,11 @@
 #include <mitsuba/render/scene.h>
+#include <mitsuba/core/plugin.h>
 #include "myBDPT.h"
 
 #define BDPT_ONLT_PT
 #define DEBUG
 
-#undef BDPT_ONLT_PT
+// #undef BDPT_ONLT_PT
 #undef DEBUG
 
 MTS_NAMESPACE_BEGIN
@@ -23,8 +24,11 @@ private:
     int m_maxDepthLight;
     Float m_rrEye;
     Float m_rrLight;
+
     bool m_usePT;
     static int m_LiCount;
+    static Float m_lightLength;
+    static int m_lightCnt;
 
     std::string m_MISmodeString;
     MISMode m_MISmode;
@@ -68,6 +72,8 @@ public:
         oss<<"MISmode: "<<m_MISmodeString<<endl;
         oss<<"usePT: "<<m_usePT<<endl;
         oss<<"BDPTVertex size: "<<sizeof(BDPTVertex)<<endl;
+        oss<<"lightCnt: "<<m_lightCnt<<endl;
+        oss<<"lightLength: "<<m_lightLength<<endl;
         oss<<"-----------------------------------------\n";
         SLog(EDebug, oss.str().c_str());
     }
@@ -78,6 +84,24 @@ public:
         int samplerResID) {
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
             cameraResID, samplerResID);
+
+
+        
+        ref<Sampler> sampler = static_cast<Sampler *> (PluginManager::getInstance()->
+            createObject(MTS_CLASS(Sampler), Properties("independent")));
+
+            for (int i = 0; i < 1000000; ++i) {
+                std::vector<BDPTVertex*> lightPath;
+            Intersection its;
+            traceLightSubpath(its, sampler, scene, lightPath);
+            if (m_lightCnt == 0)
+                m_lightLength = lightPath.size();
+            else
+                m_lightLength += (lightPath.size() - m_lightLength) / (m_lightCnt + 1);
+            ++m_lightCnt;
+            for (auto i : lightPath) delete i;
+        }
+        
         printInfos();
         return true;
     }
@@ -337,14 +361,24 @@ public:
     ) const {
         if (eyePath.size() == 0 || lightPath.size() == 0)
             return;
+        // for (int i = 0; i < eyePath.size(); ++i) {
+        //     for (int j = 0; j < lightPath.size(); ++j) {
+        //         BDPTVertex* eyeEnd = eyePath[i];
+        //         BDPTVertex* lightEnd = lightPath[j];
+        //         Spectrum value;
+        //         if(evalContri(eyeEnd, lightEnd, scene, value))
+        //             Li += value * MISweight(eyePath, lightPath, i, j);
+        //     }
+        // }
+
+        int lSize = lightPath.size();
         for (int i = 0; i < eyePath.size(); ++i) {
-            for (int j = 0; j < lightPath.size(); ++j) {
+            int choice = rand() % lSize;
                 BDPTVertex* eyeEnd = eyePath[i];
-                BDPTVertex* lightEnd = lightPath[j];
+                BDPTVertex* lightEnd = lightPath[choice];
                 Spectrum value;
                 if(evalContri(eyeEnd, lightEnd, scene, value))
-                    Li += value * MISweight(eyePath, lightPath, i, j);
-            }
+                    Li += value * MISweight(eyePath, lightPath, i, choice) * m_lightLength;
         }
     }
 
@@ -686,6 +720,8 @@ public:
 };
 
 int myBDPTIntegrator::m_LiCount = 0;
+Float myBDPTIntegrator::m_lightLength = 0;
+int myBDPTIntegrator::m_lightCnt = 0;
 
 MTS_IMPLEMENT_CLASS_S(myBDPTIntegrator, false, SamplingIntegrator)
 MTS_EXPORT_PLUGIN(myBDPTIntegrator, "My BDPT integrator");
