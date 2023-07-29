@@ -7,67 +7,95 @@ MTS_NAMESPACE_BEGIN
 #define MASK_l5b 0x0000001f
 
 template <int omSize, int omDepth>
-class OccupancyMap {
+class OccupancyMap
+{
 private:
     int bom[omSize][omSize][omDepth];
     AABB m_AABB;
     Float m_size;
     Float m_gridSize;
     Float m_gridSizeRecp;
-
-public:
     Quaternion m_q;
     Vector3 m_center;
+
+public:
     OccupancyMap() {}
 
-    inline void clear() {
+    inline void clear()
+    {
         memset(bom, 0, sizeof(bom));
     }
 
-    inline void setAABB(const AABB &aabb) {
+    inline void setAABB(const AABB &aabb)
+    {
         m_AABB = aabb;
         m_center = Vector(m_AABB.min + (m_AABB.max - m_AABB.min) / 2);
     }
 
-    inline void setSize(const Float d) {
+    inline void setSize(const Float d)
+    {
         m_size = d;
         m_gridSize = m_size / omSize;
         m_gridSizeRecp = 1 / m_gridSize;
     }
 
-    inline void set(int x, int y, int z) {
+    inline void set(int x, int y, int z)
+    {
         bom[x][y][(z & MASK_h27b) >> 5] |= 1 << (z & MASK_l5b);
     }
 
-    inline void set(Point3i p) {
+    inline void set(Point3i p)
+    {
         set(p.x, p.y, p.z);
     }
 
-    inline void setArray(int *array, int x, int y, int z) {
+    inline void setArray(int *array, int x, int y, int z)
+    {
         array[(z >> 5) & MASK_l27b] |= 1 << (z & MASK_l5b);
     }
 
-    inline bool check(int x, int y, int z) const {
+    inline bool check(int x, int y, int z) const
+    {
         return x >= 0 && x < omSize && y >= 0 && y < omSize && z >= 0 && z < omSize;
     }
 
-    inline bool check(Point3i p) const {
+    inline bool check(Point3i p) const
+    {
         return check(p.x, p.y, p.z);
     }
 
-    inline bool get(int x, int y, int z) const {
+    inline bool get(int x, int y, int z) const
+    {
         return bom[x][y][(z & MASK_h27b) >> 5] & (1 << (z & MASK_l5b));
     }
 
-    inline void get(Point3i p) const {
+    inline void get(Point3i p) const
+    {
         get(p.x, p.y, p.z);
     }
 
-    inline bool anyhit(int x, int y) const
+    inline bool anyHit(int x, int y) const
     {
         for (int i = 0; i < omDepth; i++)
             if (bom[x][y][i])
                 return true;
+        return false;
+    }
+
+    inline bool closestHit(int U, Float z, Float &id)
+    {
+        if (U > 0)
+        {
+            if (z > 0)
+            {
+                id = 32 - floor(log2(U)) - 0.5;
+            }
+            else
+            {
+                id = 32 - log2(U & (-U));
+            }
+            return true;
+        }
         return false;
     }
 
@@ -78,7 +106,8 @@ public:
             setMesh(m);
     }
 
-    inline void setMesh(const TriMesh *mesh) {
+    inline void setMesh(const TriMesh *mesh)
+    {
         const Triangle *tri = mesh->getTriangles();
         const Point3 *pos = mesh->getVertexPositions();
         int triCnt = (int)mesh->getTriangleCount();
@@ -93,7 +122,8 @@ public:
         return;
     }
 
-    void setTriangle(Point3 &p0, Point3 &p1, Point3 &p2, int depth = 0) {
+    void setTriangle(Point3 &p0, Point3 &p1, Point3 &p2, int depth = 0)
+    {
         Point3i p0i, p1i, p2i;
         getGridIndexf2i(p0, p0i);
         getGridIndexf2i(p1, p1i);
@@ -115,47 +145,55 @@ public:
         return;
     }
 
-    inline bool closeEnough(Point3i &p1, Point3i &p2, Point3i &p3) const {
+    inline bool closeEnough(Point3i &p1, Point3i &p2, Point3i &p3) const
+    {
         Vector3i v12 = p2 - p1;
         Vector3i v23 = p3 - p2;
         Vector3i v31 = p1 - p3;
         return length(v12) + length(v23) + length(v31) <= 4;
     }
 
-    inline int length(Vector3i &v) const {
+    inline int length(Vector3i &v) const
+    {
         return abs(v.x) + abs(v.y) + abs(v.z);
     }
 
-    inline void getGridIndexf(const Point3 &p, Point3 &p1) const {
+    inline void getGridIndexf(const Point3 &p, Point3 &p1) const
+    {
         p1.x = (p.x - m_AABB.min.x) * m_gridSizeRecp;
         p1.y = (p.y - m_AABB.min.y) * m_gridSizeRecp;
         p1.z = (p.z - m_AABB.min.z) * m_gridSizeRecp;
     }
 
-    inline void getGridIndexf2i(const Point3 &p, Point3i &pi) const {
+    inline void getGridIndexf2i(const Point3 &p, Point3i &pi) const
+    {
         /* Assumes x,y,z > 0 */
         pi.x = (int)(p.x);
         pi.y = (int)(p.y);
         pi.z = (int)(p.z);
     }
 
-    inline void getGridIndexi(const Point &p, Point3i &pi) const {
+    inline void getGridIndexi(const Point &p, Point3i &pi) const
+    {
         pi.x = (int)floor((p.x - m_AABB.min.x) * m_gridSizeRecp);
         pi.y = (int)floor((p.y - m_AABB.min.y) * m_gridSizeRecp);
         pi.z = (int)floor((p.z - m_AABB.min.z) * m_gridSizeRecp);
     }
 
-    bool rayInAABB(const Ray &ray, Float &nearT) const {
+    bool rayInAABB(const Ray &ray, Float &nearT) const
+    {
         if (ray.o.x > m_AABB.min.x && ray.o.x < m_AABB.max.x &&
             ray.o.y > m_AABB.min.y && ray.o.y < m_AABB.max.y &&
-            ray.o.z > m_AABB.min.z && ray.o.z < m_AABB.max.z) {
+            ray.o.z > m_AABB.min.z && ray.o.z < m_AABB.max.z)
+        {
             nearT = 0;
             return true;
         }
         return false;
     }
-    
-    bool rayIntersect(const Ray &ray, Float &nearT) const {
+
+    bool rayIntersect(const Ray &ray, Float &nearT) const
+    {
         /* TBD: When camera is in AABB? */
         Float farT;
         if (rayInAABB(ray, nearT) || m_AABB.rayIntersect(ray, nearT, farT))
@@ -229,10 +267,78 @@ public:
             return false;
 
         // any hit
-        return anyhit(x, y);
+        return anyHit(x, y);
     }
 
-    Quaternion concentricMap(const Point2 &uv) {
+    bool Visible(const Point3 &o1, const Point3 &o2) const
+    {
+        Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
+        Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+        Float x1 = (o1_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
+        Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
+        Float x2 = (o2_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
+        Float y2 = (o2_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
+        int x = (int)floor(x1);
+        int y = (int)floor(y1);
+        if (!check(x, y, 0))
+            return true;
+        int z1 = (int)floor((o1_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
+        int z2 = (int)floor((o2_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
+        if (z1 > z2)
+        {
+            int t = z1;
+            z1 = z2;
+            z2 = t;
+        }
+        if (z2 - z1 < 2)
+        {
+            return true;
+        }
+        z1 += 1;
+        z2 -= 1;
+        if (z1 < 0)
+            z1 = 0;
+        else if (z1 >= omSize)
+            z1 = omSize - 1;
+        if (z2 < 0)
+            z2 = 0;
+        else if (z2 >= omSize)
+            z2 = omSize - 1;
+        int p1 = z1 / 32;
+        int p2 = z2 / 32;
+        int r1 = z1 % 32;
+        int r2 = 31 - z2 % 32;
+        if (p1 == p2)
+        {
+            return ((bom[x][y][p1] >> r1) << (r1 + r2)) == 0;
+        }
+        else
+        {
+            Float dx = (x2 - x1) / (p2 - p1);
+            Float dy = (y2 - y1) / (p2 - p1);
+            if (bom[x][y][p1] >> r1 != 0)
+                return false;
+            for (int i = p1 + 1; i < p2; i++)
+            {
+                x1 += dx;
+                y1 += dy;
+                x = (int)floor(x1);
+                y = (int)floor(y1);
+                if (bom[x][y][i] != 0)
+                    return false;
+            }
+            x1 += dx;
+            y1 += dy;
+            x = (int)floor(x1);
+            y = (int)floor(y1);
+            if (bom[x][y][p2] << r2 != 0)
+                return false;
+        }
+        return true;
+    }
+
+    Quaternion concentricMap(const Point2 &uv)
+    {
         Float x = uv.x * 2 - 1;
         Float y = uv.y * 2 - 1;
         Float phi, r;
@@ -260,10 +366,12 @@ public:
             else
                 phi = 0;
         }
-        return normalize(Quaternion::fromDirectionPair(Vector3(0, 0, 1), Vector3(cos(phi) * r, sin(phi) * r, sqrt(1 - r * r))));
+        Float z = 1 - r * r;
+        return normalize(Quaternion::fromDirectionPair(Vector3(0, 0, 1), Vector3(cos(phi) * sqrt(1 - z * z) / r, sin(phi) * sqrt(1 - z * z) / r, z)));
     }
 
-    Quaternion generateROMA(OccupancyMap *omarray, Point2 uv) {
+    Quaternion generateROMA(OccupancyMap *omarray, Point2 uv)
+    {
         /* base direction ---> ray direction */
         Quaternion q = concentricMap(uv);
         omarray->m_q = Quaternion(q);
@@ -297,14 +405,16 @@ public:
         return q;
     }
 
-    void testSetAll() {
+    void testSetAll()
+    {
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
                 for (int k = 0; k < omSize; ++k)
                     set(i, j, k);
     }
 
-    void testSetBoxPattern() {
+    void testSetBoxPattern()
+    {
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
                 for (int k = 0; k < omSize; ++k)
@@ -314,7 +424,8 @@ public:
                 }
     }
 
-    void testSetBallPattern() {
+    void testSetBallPattern()
+    {
         int c = omSize / 2;
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
@@ -326,7 +437,8 @@ public:
                 }
     }
 
-    std::string toString() const {
+    std::string toString() const
+    {
         std::ostringstream oss;
         oss << "BOM[" << endl
             << "  AABB: " << m_AABB.toString() << "," << endl
@@ -346,5 +458,37 @@ public:
         return oss.str();
     }
 };
+
+Point2 direct2uv(const Vector v)
+{
+    Float r = sqrt(1 - v.z);
+    Float phi = atan2(v.y, v.x);
+    if (r == 0)
+        return Point2(0.5, 0.5);
+    Float a, b;
+    if (phi < -M_PI / 4)
+        phi += 2 * M_PI;
+    if (phi < M_PI / 4)
+    {
+        a = r;
+        b = phi * a / (M_PI / 4);
+    }
+    else if (phi < M_PI * 3 / 4)
+    {
+        b = r;
+        a = -(phi - M_PI / 2) * b / (M_PI / 4);
+    }
+    else if (phi < M_PI * 5 / 4)
+    {
+        a = -r;
+        b = (phi - M_PI) * a / (M_PI / 4);
+    }
+    else
+    {
+        b = -r;
+        a = -(phi - M_PI * 3 / 2) * b / (M_PI / 4);
+    }
+    return Point2((a + 1) / 2, (b + 1) / 2);
+}
 
 MTS_NAMESPACE_END

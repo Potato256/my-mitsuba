@@ -3,9 +3,9 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 64
+#define OMSIZE 128
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 64
+#define OMNUMSQRT 4
 #define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 class TestOMIntegrater : public SamplingIntegrator
@@ -39,46 +39,12 @@ public:
         SamplingIntegrator::serialize(stream, manager);
     }
 
-    Point2 quat2uv(const Quaternion &q) const
-    {
-        Vector3 v = (q * Quaternion(Vector3(0, 0, 1), 0) * Quaternion(-q.v, q.w)).v;
-        Float r = sqrt(1 - v.z * v.z);
-        Float phi = atan2(v.y, v.x);
-        if (r == 0)
-            return Point2(0.5, 0.5);
-        Float a, b;
-        if (phi < -M_PI / 4)
-            phi += 2 * M_PI;
-        if (phi < M_PI / 4)
-        {
-            a = r;
-            b = phi * a / (M_PI / 4);
-        }
-        else if (phi < M_PI * 3 / 4)
-        {
-            b = r;
-            a = -(phi - M_PI / 2) * b / (M_PI / 4);
-        }
-        else if (phi < M_PI * 5 / 4)
-        {
-            a = -r;
-            b = (phi - M_PI) * a / (M_PI / 4);
-        }
-        else
-        {
-            b = -r;
-            a = -(phi - M_PI * 3 / 2) * b / (M_PI / 4);
-        }
-        return Point2((a + 1) / 2, (b + 1) / 2);
-    }
-
     int nearestOMindex(const Ray &r) const
     {
         Vector3 d = r.d;
         if (d.z < 0)
             d = -d;
-        Quaternion q = Quaternion::fromDirectionPair(Vector(0, 0, 1), d);
-        Point2 uv = quat2uv(q);
+        Point2 uv = direct2uv(d);
         if (uv.x > 0.999999)
             uv.x = 0.999999;
         if (uv.y > 0.999999)
@@ -158,18 +124,19 @@ public:
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
         Float nearT;
-        if (test_om.rayIntersect(r, nearT))
+        // if (test_om.rayIntersect(r, nearT))
+        // {
+        //     return Spectrum(1.01f - nearT / m_maxDist) * m_color;
+        // }
+        Ray r2(r);
+        r2.d = normalize(Vector(1,1,1));
+        int id = nearestOMindex(r2);
+        // return Spectrum(Float(id) / OMNUM) * m_color;
+        // SLog(EInfo, "id: %d", id);
+        if (roma[id].rayIntersect(r, nearT))
         {
             return Spectrum(1.01f - nearT / m_maxDist) * m_color;
         }
-
-        // int id = nearestOMindex(r);
-        // // return Spectrum(Float(id) / OMNUM) * m_color;
-        // // SLog(EInfo, "id: %d", id);
-        // if (roma[id].Trace(r, nearT))
-        // {
-        //     return Spectrum(Float(id) / OMNUM) * m_color;
-        // }
 
         // if (rRec.rayIntersect(r)) {
         //     Float distance = rRec.its.t;
