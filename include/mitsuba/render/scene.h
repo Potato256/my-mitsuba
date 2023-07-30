@@ -1094,6 +1094,9 @@ public:
     inline ref_vector<Emitter> &getEmitters() { return m_emitters; }
     /// Return the scene's emitters
     inline const ref_vector<Emitter> &getEmitters() const { return m_emitters; }
+
+    inline const DiscreteDistribution& getEmitterPDF() const {return m_emitterPDF; };
+
     /// Return the scene's participating media
     inline ref_vector<Medium> &getMedia() { return m_media; }
     /// Return the scene's participating media

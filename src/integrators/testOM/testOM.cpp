@@ -3,11 +3,6 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 128
-#define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 4
-#define OMNUM (OMNUMSQRT * OMNUMSQRT)
-
 class TestOMIntegrater : public SamplingIntegrator
 {
 public:
@@ -25,9 +20,10 @@ private:
     Spectrum m_color;
     Float m_maxDist;
     AABB m_baseAABB;
-    OccupancyMap<OMSIZE, OMDEPTH> m_om;
-    OccupancyMap<OMSIZE, OMDEPTH> test_om;
-    OccupancyMap<OMSIZE, OMDEPTH> roma[OMNUM];
+
+    OM m_om;
+    OM test_om;
+    OM roma[OMNUM];
 
 public:
     /// Unserialize from a binary data stream
@@ -37,19 +33,6 @@ public:
     /// Serialize to a binary data stream
     void serialize(Stream *stream, InstanceManager *manager) const {
         SamplingIntegrator::serialize(stream, manager);
-    }
-
-    int nearestOMindex(const Ray &r) const
-    {
-        Vector3 d = r.d;
-        if (d.z < 0)
-            d = -d;
-        Point2 uv = direct2uv(d);
-        if (uv.x > 0.999999)
-            uv.x = 0.999999;
-        if (uv.y > 0.999999)
-            uv.y = 0.999999;
-        return int(floor(uv.x * OMNUMSQRT)) * OMNUMSQRT + int(floor(uv.y * OMNUMSQRT));
     }
 
     /// Preprocess function -- called on the initiating machine
@@ -84,9 +67,6 @@ public:
         m_om.clear();
         m_om.setAABB(m_baseAABB);
         m_om.setSize(2 * r);
-        // m_om.testSetAll();
-        // m_om.testSetBallPattern();
-        // m_om.testSetBoxPattern();
         m_om.setScene(scene);
 
         /* init roma */
@@ -96,7 +76,7 @@ public:
                 roma[i * OMNUMSQRT + j].clear();
                 roma[i * OMNUMSQRT + j].setAABB(m_baseAABB);
                 roma[i * OMNUMSQRT + j].setSize(2 * r);
-                m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + 0.5) / OMNUMSQRT, (j + 0.5) / OMNUMSQRT));
+                m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + 0.5f) / OMNUMSQRT, (j + 0.5f) / OMNUMSQRT));
             }
         test_om.clear();
         test_om.setAABB(m_baseAABB);
@@ -124,13 +104,10 @@ public:
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
         Float nearT;
-        // if (test_om.rayIntersect(r, nearT))
-        // {
-        //     return Spectrum(1.01f - nearT / m_maxDist) * m_color;
-        // }
+
         Ray r2(r);
         r2.d = normalize(Vector(1,1,1));
-        int id = nearestOMindex(r2);
+        int id = OM::nearestOMindex(r2);
         // return Spectrum(Float(id) / OMNUM) * m_color;
         // SLog(EInfo, "id: %d", id);
         if (roma[id].rayIntersect(r, nearT))

@@ -1,4 +1,5 @@
 #include <mitsuba/render/scene.h>
+#include "myOM.h"
 
 MTS_NAMESPACE_BEGIN
 class myPathIntegrator : public SamplingIntegrator {
@@ -23,6 +24,8 @@ private:
     std::string m_MISmodeString;
     MISMode m_MISmode;
 
+    AABB m_baseAABB;
+    OM m_om;
     
 public:
 
@@ -31,7 +34,7 @@ public:
         m_maxDepth = props.getInteger("maxDepth", 50);
         m_rrDepth = props.getInteger("rrDepth", 0);
 
-        m_strategyString = props.getString("strategy", "mis");
+        m_strategyString = props.getString("strategy", "nee");
         if (m_strategyString == "bsdf")
             m_strategy = PathBSDF;
         else if (m_strategyString == "nee")
@@ -67,6 +70,33 @@ public:
         int samplerResID) {
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
             cameraResID, samplerResID);
+
+        Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
+        auto meshes = scene->getMeshes();
+
+        for (auto m : meshes)
+        {
+            // SLog(EInfo, m->toString().c_str());
+            m_min.x = std::min(m_min.x, m->getAABB().min.x);
+            m_min.y = std::min(m_min.y, m->getAABB().min.y);
+            m_min.z = std::min(m_min.z, m->getAABB().min.z);
+            m_max.x = std::max(m_max.x, m->getAABB().max.x);
+            m_max.y = std::max(m_max.y, m->getAABB().max.y);
+            m_max.z = std::max(m_max.z, m->getAABB().max.z);
+        }
+
+        Vector3 d = m_max - m_min;
+        Float r = d.length();
+        r *= 0.5 * 1.001f;
+        m_center = m_min + d / 2.0f;
+        m_lcorner = m_center - Vector3(r);
+        m_baseAABB = AABB(m_lcorner, m_lcorner + Vector3(2 * r));
+
+        m_om.clear();
+        m_om.setAABB(m_baseAABB);
+        m_om.setSize(2 * r);
+        m_om.setScene(scene);
+
         return true;
     }
 
@@ -132,8 +162,10 @@ public:
             DirectSamplingRecord dRec(its);
 
             if (m_strategy!=PathBSDF && (bsdf->getType() & BSDF::ESmooth)) {
-                Spectrum value = scene->sampleEmitterDirect(dRec, rRec.nextSample2D());
-                if (!value.isZero()) {
+                Spectrum value = scene->sampleEmitterDirect(dRec, rRec.nextSample2D(), false);
+                bool vis = m_om.visibilityBOM(its.p, dRec.p);
+
+                if (vis) {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
 
                     /* Allocate a record for querying the BSDF */

@@ -1,6 +1,13 @@
+#pragma once
 #include <mitsuba/render/scene.h>
+#include "helpers.h"
 
 MTS_NAMESPACE_BEGIN
+
+#define OMSIZE 128
+#define OMDEPTH OMSIZE / 32
+#define OMNUMSQRT 4
+#define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 #define MASK_h27b 0xffffffe0
 #define MASK_l27b 0x07ffffff
@@ -41,7 +48,7 @@ public:
 
     inline void set(int x, int y, int z)
     {
-        bom[x][y][(z & MASK_h27b) >> 5] |= 1 << (z & MASK_l5b);
+        bom[x][y][z >> 5] |= 1 << (z & MASK_l5b);
     }
 
     inline void set(Point3i p)
@@ -66,7 +73,7 @@ public:
 
     inline bool get(int x, int y, int z) const
     {
-        return bom[x][y][(z & MASK_h27b) >> 5] & (1 << (z & MASK_l5b));
+        return bom[x][y][z >> 5] & (1 << (z & MASK_l5b));
     }
 
     inline void get(Point3i p) const
@@ -165,6 +172,13 @@ public:
         p1.z = (p.z - m_AABB.min.z) * m_gridSizeRecp;
     }
 
+    inline void getGridDirf(const Vector3 &d, Vector3 &d1) const
+    {
+        d1.x = d.x * m_gridSizeRecp;
+        d1.y = d.y * m_gridSizeRecp;
+        d1.z = d.z * m_gridSizeRecp;
+    }
+
     inline void getGridIndexf2i(const Point3 &p, Point3i &pi) const
     {
         /* Assumes x,y,z > 0 */
@@ -194,7 +208,6 @@ public:
 
     bool rayIntersect(const Ray &ray, Float &nearT) const
     {
-        /* TBD: When camera is in AABB? */
         Float farT;
         if (rayInAABB(ray, nearT) || m_AABB.rayIntersect(ray, nearT, farT))
         {
@@ -251,6 +264,50 @@ public:
             }
         }
         return false;
+    }
+
+    inline Float marchOneCube(const Point3 &p, const Vector3 &d) const {
+        Point3 p1;
+        Point3i pi;
+        Vector3 d1;
+        getGridIndexf(p, p1);
+        getGridIndexf2i(p1, pi);
+        getGridDirf(d, d1);
+        Float t = 1e30f;
+        t = std::min(t, d1.x > 0 ? (pi.x+1-p1.x)/d1.x : (pi.x-p1.x)/d1.x);
+        t = std::min(t, d1.y > 0 ? (pi.y+1-p1.y)/d1.y : (pi.y-p1.y)/d1.y);
+        t = std::min(t, d1.z > 0 ? (pi.z+1-p1.z)/d1.z : (pi.z-p1.z)/d1.z);
+        return t;
+    }
+
+    bool visibilityBOM(Point3 p1, Point3 p2) const {
+        Ray r;
+        Vector3 d = p2 - p1;
+        Float dLength = d.length(); 
+        d = d / dLength;
+
+        for (int i = 0; i < 1; i++) {
+            if (pointInAABB(p1, m_AABB)){
+                Float t = marchOneCube(p1, d);
+                p1 = p1 + d * (t + Epsilon);
+                dLength -= t;
+            }
+            if (pointInAABB(p2, m_AABB)){
+                Float t = marchOneCube(p2, -d);
+                p2 = p2 - d * (t + Epsilon);
+                dLength -= t;
+            }
+            if (dLength < Epsilon)
+                return true;
+        }
+
+        Float nearT;
+        r.o = p1;
+        r.d = d;
+        if(rayIntersect(r, nearT))
+            return nearT > dLength - Epsilon;
+        else
+            return true;
     }
 
     bool Trace(const Ray &ray, Float &nearT) const
@@ -380,9 +437,9 @@ public:
         for (int x = 0; x < omSize; x++)
             for (int y = 0; y < omSize; y++)
             {
-                Float radiu = Float(omSize) / 2.0;
-                Vector3 x_start(Float(x - radiu), Float(y - radiu), 0.5 - radiu);
-                Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu - 0.5);
+                Float radiu = Float(omSize) / 2.0f;
+                Vector3 x_start(Float(x - radiu), Float(y - radiu), 0.5f - radiu);
+                Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu - 0.5f);
                 // rotate
                 Vector3 x_start_rot = (q * Quaternion(x_start, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
                 Vector3 x_end_rot = (q * Quaternion(x_end, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
@@ -437,6 +494,19 @@ public:
                 }
     }
 
+    static inline int nearestOMindex(const Ray &r)
+    {
+        Vector3 d = r.d;
+        if (d.z < 0)
+            d = -d;
+        Point2 uv = direct2uv(d);
+        if (uv.x > 0.999999)
+            uv.x = 0.999999;
+        if (uv.y > 0.999999)
+            uv.y = 0.999999;
+        return int(floor(uv.x * OMNUMSQRT)) * OMNUMSQRT + int(floor(uv.y * OMNUMSQRT));
+    }
+
     std::string toString() const
     {
         std::ostringstream oss;
@@ -459,36 +529,6 @@ public:
     }
 };
 
-Point2 direct2uv(const Vector v)
-{
-    Float r = sqrt(1 - v.z);
-    Float phi = atan2(v.y, v.x);
-    if (r == 0)
-        return Point2(0.5, 0.5);
-    Float a, b;
-    if (phi < -M_PI / 4)
-        phi += 2 * M_PI;
-    if (phi < M_PI / 4)
-    {
-        a = r;
-        b = phi * a / (M_PI / 4);
-    }
-    else if (phi < M_PI * 3 / 4)
-    {
-        b = r;
-        a = -(phi - M_PI / 2) * b / (M_PI / 4);
-    }
-    else if (phi < M_PI * 5 / 4)
-    {
-        a = -r;
-        b = (phi - M_PI) * a / (M_PI / 4);
-    }
-    else
-    {
-        b = -r;
-        a = -(phi - M_PI * 3 / 2) * b / (M_PI / 4);
-    }
-    return Point2((a + 1) / 2, (b + 1) / 2);
-}
+typedef OccupancyMap<OMSIZE, OMDEPTH> OM;
 
 MTS_NAMESPACE_END

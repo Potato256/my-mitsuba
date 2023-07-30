@@ -64,7 +64,7 @@ public:
 
     void printInfos(){
         std::ostringstream oss;
-        oss<<"\n------------ BDPT Info Print ------------\n";
+        oss<<"\n----------- BDPTsp Info Print -----------\n";
         oss<<"maxDepthEye: "<<m_maxDepthEye<<endl;
         oss<<"maxDepthLight: "<<m_maxDepthLight<<endl;
         oss<<"rrEye: "<<m_rrEye<<endl;
@@ -127,12 +127,31 @@ public:
         /* Trace eye subpath */
         traceEyeSubpath(eyeRay, rRec.its, rRec.sampler, rRec.scene, eyePath, Li);
 
-        std::vector<BDPTVertex*> lightPath;
+        std::vector<BDPTVertex*> lightPath1;
         /* Trace light subpath */
-        traceLightSubpath(rRec.its, rRec.sampler, rRec.scene, lightPath);
+        traceLightSubpath(rRec.its, rRec.sampler, rRec.scene, lightPath1);
+
+        std::vector<BDPTVertex*> lightPath2;
+        /* Trace light subpath */
+        traceLightSubpath(rRec.its, rRec.sampler, rRec.scene, lightPath2);
+
+        std::vector<BDPTVertex*> lightPath;
+
+        int s1 = lightPath1.size();
+        int s2 = lightPath2.size();
+        int s = s1 + s2;
+
+        if (rand() % s < s1) {
+            for (auto i : lightPath2) delete i;
+            lightPath = lightPath1;
+        }
+        else {
+            for (auto i : lightPath1) delete i;
+            lightPath = lightPath2;
+        }
 
         /* Connect eye subpath and light subpath */
-        connectSubpaths(eyePath, lightPath, rRec.scene, Li);
+        connectSubpaths(eyePath, lightPath, rRec.scene, Li, s);
 
         /* Clean up */
         for (auto i : eyePath)   delete i;
@@ -357,29 +376,30 @@ public:
         std::vector<BDPTVertex*> eyePath, 
         std::vector<BDPTVertex*> lightPath,
         const Scene* scene, 
-        Spectrum& Li
+        Spectrum& Li,
+        int k
     ) const {
         if (eyePath.size() == 0 || lightPath.size() == 0)
             return;
-        for (int i = 0; i < eyePath.size(); ++i) {
-            for (int j = 0; j < lightPath.size(); ++j) {
-                BDPTVertex* eyeEnd = eyePath[i];
-                BDPTVertex* lightEnd = lightPath[j];
-                Spectrum value;
-                if(evalContri(eyeEnd, lightEnd, scene, value))
-                    Li += value * MISweight(eyePath, lightPath, i, j);
-            }
-        }
-
-        // int lSize = lightPath.size();
         // for (int i = 0; i < eyePath.size(); ++i) {
-        //     int choice = rand() % lSize;
+        //     for (int j = 0; j < lightPath.size(); ++j) {
         //         BDPTVertex* eyeEnd = eyePath[i];
-        //         BDPTVertex* lightEnd = lightPath[choice];
+        //         BDPTVertex* lightEnd = lightPath[j];
         //         Spectrum value;
         //         if(evalContri(eyeEnd, lightEnd, scene, value))
-        //             Li += value * MISweight(eyePath, lightPath, i, choice) * lSize;
+        //             Li += value * MISweight(eyePath, lightPath, i, j);
+        //     }
         // }
+
+        int lSize = lightPath.size();
+        for (int i = 0; i < eyePath.size(); ++i) {
+            int choice = rand() % lSize;
+                BDPTVertex* eyeEnd = eyePath[i];
+                BDPTVertex* lightEnd = lightPath[choice];
+                Spectrum value;
+                if(evalContri(eyeEnd, lightEnd, scene, value))
+                    Li += value * MISweight(eyePath, lightPath, i, choice) * k / 2.0f;
+        }
     }
 
     bool evalContri(

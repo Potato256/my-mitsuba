@@ -3,11 +3,6 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 64
-#define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 16
-#define OMNUM (OMNUMSQRT * OMNUMSQRT)
-
 class myPathIntegrator : public SamplingIntegrator
 {
 public:
@@ -20,8 +15,8 @@ private:
 
     // OM relative
     AABB m_baseAABB;
-    OccupancyMap<OMSIZE, OMDEPTH> m_om;
-    OccupancyMap<OMSIZE, OMDEPTH> roma[OMNUM];
+    OM m_om;
+    OM roma[OMNUM];
 
 public:
 
@@ -94,7 +89,7 @@ public:
                 roma[i * OMNUMSQRT + j].clear();
                 roma[i * OMNUMSQRT + j].setAABB(m_baseAABB);
                 roma[i * OMNUMSQRT + j].setSize(2 * r);
-                m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + 0.5) / OMNUMSQRT, (j + 0.5) / OMNUMSQRT));
+                m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + 0.5f) / OMNUMSQRT, (j + 0.5f) / OMNUMSQRT));
             }
 
         return true;

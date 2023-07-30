@@ -10,9 +10,12 @@ plugins += env.SharedLibrary('depth', ['depth/depth.cpp'])
 plugins += env.SharedLibrary('myPath', ['myPath/myPath.cpp'])
 plugins += env.SharedLibrary('testNEE', ['myPath/testNEE.cpp'])
 plugins += env.SharedLibrary('myBDPT', ['myBDPT/myBDPT.cpp'])
+plugins += env.SharedLibrary('myBDPTsp', ['myBDPT/myBDPTsp.cpp'])
 # plugins += env.SharedLibrary('LVCBPT', ['LVCBPT/LVCBPT.cpp'])
 plugins += env.SharedLibrary('testOM', ['testOM/testOM.cpp'])
 plugins += env.SharedLibrary('testNEE_OM', ['testOM/testNEE_OM.cpp'])
+plugins += env.SharedLibrary('myPath_OM', ['testOM/myPath_OM.cpp'])
+
 
 # Photon mapping-based techniques
 plugins += env.SharedLibrary('photonmapper', ['photonmapper/photonmapper.cpp', 'photonmapper/bre.cpp'])
