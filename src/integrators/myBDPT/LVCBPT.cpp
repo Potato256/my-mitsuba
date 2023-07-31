@@ -2,6 +2,10 @@
 #include <mitsuba/core/plugin.h>
 #include "myBDPT.h"
 
+#if defined(MTS_OPENMP)
+# include <omp.h>
+#endif
+
 MTS_NAMESPACE_BEGIN
 
 class LVCBPTIntegrator : public Integrator {
@@ -20,6 +24,9 @@ private:
     int m_LVCMaxVertexSize;
     int m_LVCTotalSize;
     BDPTVertex* m_LVC; 
+    
+    ref<Bitmap> m_bitmap;
+
     static int m_LiCount;
 
 public:
@@ -32,9 +39,10 @@ public:
         m_rrLight = props.getFloat("rrLight", 0.6);
 
         m_LVCTotalSize = m_LVCPathSize * m_maxDepthLight * sizeof(BDPTVertex);
-        m_LVC = (BDPTVertex*) malloc(m_LVCTotalSize);
-
         m_LVCMaxVertexSize = m_LVCPathSize * m_maxDepthLight;
+        
+        m_LVC = new BDPTVertex[m_LVCMaxVertexSize];
+
         m_LVCVertexSize = 0;
     }
     
@@ -57,6 +65,7 @@ public:
         // oss<<"MISmode: "<<m_MISmodeString<<endl;
         oss<<"BDPTVertex size: "<<sizeof(BDPTVertex)<<endl;
         oss<<"LVCPathSize: "<<m_LVCPathSize<<endl;
+        oss<<"LVCVertexSize: "<<m_LVCVertexSize<<endl;
         oss<<"LVCMaxVertexSize: "<<m_LVCMaxVertexSize<<endl;
         oss<<"LVCTotalSize: "<<m_LVCMaxVertexSize/1024 <<"KB"<<endl;
         oss<<"-----------------------------------------\n";
@@ -70,6 +79,7 @@ public:
         Integrator::preprocess(scene, queue, job, sceneResID,
             cameraResID, samplerResID);
         printInfos();
+        m_LVCVertexSize = 0;
 
 
 
@@ -84,28 +94,83 @@ public:
         ref<Scheduler> sched = Scheduler::getInstance();
         ref<Sensor> sensor = scene->getSensor();
         ref<Film> film = sensor->getFilm();
+        Vector2i cropSize = film->getCropSize();
+        ref<Sampler> sampler = scene->getSampler();
+        size_t sampleCount = sampler->getSampleCount();
         size_t nCores = sched->getCoreCount();
         
+        int blockSize = scene->getBlockSize();
+
         Log(EInfo, "Starting render job (%ix%i, " SIZE_T_FMT " %s, " SSE_STR ") ..",
             film->getCropSize().x, film->getCropSize().y,
             nCores, nCores == 1 ? "core" : "cores");
             
-        Vector2i cropSize = film->getCropSize();
+        /* Create a sampler instance for every core */
+        std::vector<SerializableObject *> samplers(sched->getCoreCount());
+        for (size_t i=0; i<sched->getCoreCount(); ++i) {
+            ref<Sampler> clonedSampler = sampler->clone();
+            clonedSampler->incRef();
+            samplers[i] = clonedSampler.get();
+        }
         
-        ref<Sampler> sampler = static_cast<Sampler*> (PluginManager::getInstance()->
-            createObject(MTS_CLASS(Sampler), Properties("independent")));
+        int samplerResID = sched->registerMultiResource(samplers);
 
-        int blockSize = scene->getBlockSize();
+        /* Allocate memory */
+        BDPTVertex* tmp_LVC = new BDPTVertex[m_LVCMaxVertexSize];
+        
+        m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
+        m_bitmap->clear();
 
-        for (int i = 0; i < m_LVCPathSize; ++i)
-            traceLightSubpath(sampler, scene);
+        int* LVCSize = new int[nCores];
+        memset(LVCSize, 0, sizeof(int)*nCores);
+
+        #define MTS_OPENMP
+        #if defined(MTS_OPENMP)
+            #pragma omp parallel
+            {   
+                int tid = mts_omp_get_thread_num();
+                Sampler *sampler = static_cast<Sampler *>(samplers[tid]);
+                int pSize = m_LVCPathSize / nCores;
+                int vSize = pSize * m_maxDepthLight * tid;
+                for (int i = 0; i < pSize; ++i)
+                    traceLightSubpath(sampler, scene, 
+                        tmp_LVC + vSize , LVCSize[tid]);
+                #pragma omp critical
+                {
+                    int start = m_LVCVertexSize;
+                    m_LVCVertexSize += LVCSize[tid];
+                    memcpy(m_LVC + start, tmp_LVC + vSize, 
+                        sizeof(BDPTVertex) * LVCSize[tid]); 
+                }
+            }
+        #else
+            for (int i = 0; i < m_LVCPathSize; ++i)
+                traceLightSubpath(sampler, scene, m_LVC, m_LVCVertexSize);
+        #endif
+
+        Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
+
+        for (int yofs=0; yofs<cropSize.y; ++yofs) {
+            for (int xofs=0; xofs<cropSize.x; ++xofs) {
+                target[yofs*cropSize.x+xofs] = Spectrum(1.0f);
+            }
+        }
+
+        
+        film->setBitmap(m_bitmap);
+        printInfos();
+        
+        delete []LVCSize;
+        delete []tmp_LVC;
         
         return true;
     }
 
     void traceLightSubpath(
         Sampler* sampler, 
-        const Scene* scene
+        const Scene* scene,
+        BDPTVertex* LVC,
+        int& LVCsize
     ) {
         /* Trace light subpath */
         /* Sample light position */
@@ -116,7 +181,7 @@ public:
         if (pRec.measure != EArea || !emitter->isOnSurface())
             SLog(EError, "myBDPT only supports area emitters!");
         
-        BDPTVertex *lp = &m_LVC[m_LVCVertexSize++];
+        BDPTVertex *lp = &LVC[LVCsize++];
         lp->pos = pRec.p;
         lp->n = pRec.n;
         lp->value = lightValue;
@@ -155,7 +220,7 @@ public:
                 break;
             
             /* Add a vertex to the light path */
-            BDPTVertex *lp = &m_LVC[m_LVCVertexSize++];
+            BDPTVertex *lp = &LVC[LVCsize++];
             lp->pos = its.p;
             lp->wi = -lightRay.d;
             lp->n = its.shFrame.n;
@@ -167,12 +232,12 @@ public:
             lp->bsdf = bsdf;
 
             /* The order of pdf/pdfInverse is opposite here comparing to eye trace! */
-            BDPTVertex *last = &m_LVC[m_LVCVertexSize-2];
+            BDPTVertex *last = &LVC[LVCsize-2];
             Float distSquared = its.t * its.t;
             last->pdfInverse = lastPdf * absDot(lp->wi, lp->n) / distSquared;
 
             if (lightTraceDepth >= 2) {
-                BDPTVertex *llast = &m_LVC[m_LVCVertexSize-3];;                
+                BDPTVertex *llast = &LVC[LVCsize-3];;                
                 llast->pdf = computePdfForward(lightRay.d, last, llast);
             }
 
@@ -188,8 +253,7 @@ public:
             ++lightTraceDepth;
         }
         return;
-    } 
-
+    }
 
     ~LVCBPTIntegrator(){
         free(m_LVC);
