@@ -37,14 +37,18 @@ public:
     {
         m_AABB = aabb;
         m_center = Vector(m_AABB.min + (m_AABB.max - m_AABB.min) / 2);
-    }
-
-    inline void setSize(const Float d)
-    {
+        Float d = m_AABB.max.x - m_AABB.min.x;
         m_size = d;
         m_gridSize = m_size / omSize;
         m_gridSizeRecp = 1 / m_gridSize;
     }
+
+    // inline void setSize(const Float d)
+    // {
+    //     m_size = d;
+    //     m_gridSize = m_size / omSize;
+    //     m_gridSizeRecp = 1 / m_gridSize;
+    // }
 
     inline void set(int x, int y, int z)
     {
@@ -286,7 +290,7 @@ public:
         return t;
     }
 
-    bool visibilityBOM(const Point3& o1, const Point3& o2) const
+    bool visibilityBOM(const Point3 &o1, const Point3 &o2) const
     {
         Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
         Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
@@ -378,12 +382,12 @@ public:
             z1 = z2;
             z2 = t;
         }
-        if (z2 - z1 < 4)
+        if (z2 - z1 < 2)
         {
             return true;
         }
-        z1 += 2;
-        z2 -= 2;
+        z1 += 1;
+        z2 -= 1;
         if (z1 < 0)
             z1 = 0;
         else if (z1 >= omSize)

@@ -70,6 +70,18 @@ public:
         SamplingIntegrator::serialize(stream, manager);
     }
 
+    void generateROMA(Sampler* sampler) const
+    {
+        for (int i = 0; i < OMNUMSQRT; i++)
+            for (int j = 0; j < OMNUMSQRT; j++)
+            {
+                roma[i * OMNUMSQRT + j].clear();
+                roma[i * OMNUMSQRT + j].setAABB(m_baseAABB);
+                Point2 uv = sampler->next2D();
+                m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + uv.x) / OMNUMSQRT, (j + uv.y) / OMNUMSQRT));
+            }
+    }
+
     /// Preprocess function -- called on the initiating machine
     bool preprocess(const Scene *scene, RenderQueue *queue,
                     const RenderJob *job, int sceneResID, int cameraResID,
@@ -101,7 +113,7 @@ public:
 
         m_om.clear();
         m_om.setAABB(m_baseAABB);
-        m_om.setSize(2 * r);
+        // m_om.setSize(2 * r);
         m_om.setScene(scene);
 
         /* init roma */
@@ -110,9 +122,9 @@ public:
             {
                 roma[i * OMNUMSQRT + j].clear();
                 roma[i * OMNUMSQRT + j].setAABB(m_baseAABB);
-                roma[i * OMNUMSQRT + j].setSize(2 * r);
                 m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + 0.5f) / OMNUMSQRT, (j + 0.5f) / OMNUMSQRT));
             }
+
         return true;
     }
 
@@ -179,6 +191,7 @@ public:
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
     Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
     {
+        generateROMA(rRec.sampler);
         ++m_LiCount;
         /* Some aliases and local variables */
         const Scene *scene = rRec.scene;
@@ -207,8 +220,8 @@ public:
             if (m_strategy != PathBSDF && (bsdf->getType() & BSDF::ESmooth))
             {
                 Spectrum value = scene->sampleEmitterDirect(dRec, rRec.nextSample2D(), false);
-                // int id = nearestOMindex(dRec.d);
-                bool vis = m_om.visibilityBOM(its.p, dRec.p);
+                int id = nearestOMindex(dRec.d);
+                bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
 
                 if (vis)
                 {

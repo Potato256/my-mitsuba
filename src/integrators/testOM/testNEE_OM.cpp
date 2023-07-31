@@ -79,7 +79,6 @@ public:
 
         m_om.clear();
         m_om.setAABB(m_baseAABB);
-        m_om.setSize(2 * r);
         m_om.setScene(scene);
 
         /* init roma */
@@ -88,7 +87,6 @@ public:
             {
                 roma[i * OMNUMSQRT + j].clear();
                 roma[i * OMNUMSQRT + j].setAABB(m_baseAABB);
-                roma[i * OMNUMSQRT + j].setSize(2 * r);
                 m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + 0.5f) / OMNUMSQRT, (j + 0.5f) / OMNUMSQRT));
             }
 
