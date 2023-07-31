@@ -2,19 +2,23 @@
 #include "myOM.h"
 
 MTS_NAMESPACE_BEGIN
-class myPathIntegrator : public SamplingIntegrator {
+class myPathIntegrator : public SamplingIntegrator
+{
 public:
     MTS_DECLARE_CLASS()
-    enum SamplingStrategy {
+    enum SamplingStrategy
+    {
         PathBSDF = 0,
         PathNEE,
         PathMIS
     };
-    enum MISMode {
+    enum MISMode
+    {
         UniformHeuristic = 0,
         BalanceHeuristic,
         PowerHeuristic
     };
+
 private:
     int m_maxDepth;
     int m_rrDepth;
@@ -26,11 +30,12 @@ private:
 
     AABB m_baseAABB;
     OM m_om;
-    
-public:
+    OM roma[OMNUM];
 
+public:
     /// Initialize the integrator with the specified properties
-    myPathIntegrator(const Properties &props) : SamplingIntegrator(props) {
+    myPathIntegrator(const Properties &props) : SamplingIntegrator(props)
+    {
         m_maxDepth = props.getInteger("maxDepth", 50);
         m_rrDepth = props.getInteger("rrDepth", 0);
 
@@ -58,18 +63,20 @@ public:
     // Unserialize from a binary data stream
     myPathIntegrator(Stream *stream, InstanceManager *manager)
         : SamplingIntegrator(stream, manager) {}
-    
+
     /// Serialize to a binary data stream
-    void serialize(Stream *stream, InstanceManager *manager) const {
+    void serialize(Stream *stream, InstanceManager *manager) const
+    {
         SamplingIntegrator::serialize(stream, manager);
     }
-    
+
     /// Preprocess function -- called on the initiating machine
     bool preprocess(const Scene *scene, RenderQueue *queue,
-        const RenderJob *job, int sceneResID, int cameraResID, 
-        int samplerResID) {
+                    const RenderJob *job, int sceneResID, int cameraResID,
+                    int samplerResID)
+    {
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
-            cameraResID, samplerResID);
+                                       cameraResID, samplerResID);
 
         Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
@@ -97,46 +104,81 @@ public:
         m_om.setSize(2 * r);
         m_om.setScene(scene);
 
+        /* init roma */
+        for (int i = 0; i < OMNUMSQRT; i++)
+            for (int j = 0; j < OMNUMSQRT; j++)
+            {
+                roma[i * OMNUMSQRT + j].clear();
+                roma[i * OMNUMSQRT + j].setAABB(m_baseAABB);
+                roma[i * OMNUMSQRT + j].setSize(2 * r);
+                m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + 0.5f) / OMNUMSQRT, (j + 0.5f) / OMNUMSQRT));
+            }
         return true;
     }
 
-    inline Float misWeight(Float pdfBSDF, Float pdfDirect, SamplingStrategy strategy) const {
+    inline Float misWeight(Float pdfBSDF, Float pdfDirect, SamplingStrategy strategy) const
+    {
         switch (strategy)
         {
         case PathBSDF:
             switch (m_strategy)
             {
-            case PathBSDF: return 1;
-            case PathNEE: return 0;
-            case PathMIS: return mis(pdfBSDF, pdfDirect, m_MISmode);
-            default: return 0;
+            case PathBSDF:
+                return 1;
+            case PathNEE:
+                return 0;
+            case PathMIS:
+                return mis(pdfBSDF, pdfDirect, m_MISmode);
+            default:
+                return 0;
             }
         case PathNEE:
             switch (m_strategy)
             {
-            case PathBSDF: return 0;
-            case PathNEE: return 1;
-            case PathMIS: return mis(pdfDirect, pdfBSDF, m_MISmode);
-            default: return 0;
+            case PathBSDF:
+                return 0;
+            case PathNEE:
+                return 1;
+            case PathMIS:
+                return mis(pdfDirect, pdfBSDF, m_MISmode);
+            default:
+                return 0;
             }
         default:
             return 0;
         }
     }
 
-#define sqr(x) ((x)*(x))
-    inline Float mis(Float p1, Float p2, MISMode mode) const {
+#define sqr(x) ((x) * (x))
+    inline Float mis(Float p1, Float p2, MISMode mode) const
+    {
         switch (m_MISmode)
         {
-        case UniformHeuristic: return 0.5;
-        case BalanceHeuristic: return p1 / (p1 + p2);
-        case PowerHeuristic: return sqr(p1) / (sqr(p1) + sqr(p2));
-        default: return 0;
+        case UniformHeuristic:
+            return 0.5;
+        case BalanceHeuristic:
+            return p1 / (p1 + p2);
+        case PowerHeuristic:
+            return sqr(p1) / (sqr(p1) + sqr(p2));
+        default:
+            return 0;
         }
     }
 
+    int nearestOMindex(Vector3 d) const
+    {
+        if (d.z < 0)
+            d = -d;
+        Point2 uv = direct2uv(d);
+        if (uv.x > 0.999999)
+            uv.x = 0.999999;
+        if (uv.y > 0.999999)
+            uv.y = 0.999999;
+        return int(floor(uv.x * OMNUMSQRT)) * OMNUMSQRT + int(floor(uv.y * OMNUMSQRT));
+    }
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
-    Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const {
+    Spectrum Li(const RayDifferential &r, RadianceQueryRecord &rRec) const
+    {
         ++m_LiCount;
         /* Some aliases and local variables */
         const Scene *scene = rRec.scene;
@@ -152,20 +194,24 @@ public:
         if (its.isValid() && its.isEmitter())
             return its.Le(-ray.d);
 
-        while(rRec.depth <= m_maxDepth || m_maxDepth < 0) {
+        while (rRec.depth <= m_maxDepth || m_maxDepth < 0)
+        {
             if (!its.isValid())
                 break;
-            
+
             const BSDF *bsdf = its.getBSDF(ray);
 
             /* Estimate the direct illumination if this is requested */
             DirectSamplingRecord dRec(its);
 
-            if (m_strategy!=PathBSDF && (bsdf->getType() & BSDF::ESmooth)) {
+            if (m_strategy != PathBSDF && (bsdf->getType() & BSDF::ESmooth))
+            {
                 Spectrum value = scene->sampleEmitterDirect(dRec, rRec.nextSample2D(), false);
+                // int id = nearestOMindex(dRec.d);
                 bool vis = m_om.visibilityBOM(its.p, dRec.p);
 
-                if (vis) {
+                if (vis)
+                {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
 
                     /* Allocate a record for querying the BSDF */
@@ -174,11 +220,13 @@ public:
                     /* Evaluate BSDF * cos(theta) */
                     const Spectrum bsdfVal = bsdf->eval(bRec);
 
-                    if (!bsdfVal.isZero()) {
+                    if (!bsdfVal.isZero())
+                    {
                         /* Calculate prob. of having generated that direction
                            using BSDF sampling */
                         Float bsdfPdf = (emitter->isOnSurface() && dRec.measure == ESolidAngle)
-                            ? bsdf->pdf(bRec) : 0;
+                                            ? bsdf->pdf(bRec)
+                                            : 0;
                         /* Weight using the power heuristic */
                         Float misW = misWeight(bsdfPdf, dRec.pdf, PathNEE);
                         Li += throughput * value * bsdfVal * misW;
@@ -192,37 +240,39 @@ public:
             Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf, rRec.nextSample2D());
             if (bsdfWeight.isZero())
                 break;
-            
+
             const Vector wo = its.toWorld(bRec.wo);
-            
+
             /* Keep track of the throughput and relative
                refractive index along the path */
-            throughput *= bsdfWeight ;
+            throughput *= bsdfWeight;
             eta *= bRec.eta;
 
             /* Trace a ray in this direction */
             ray = Ray(its.p, wo, ray.time);
 
             Spectrum value;
-            if (scene->rayIntersect(ray, its)) {
-                if (its.isEmitter()) {
+            if (scene->rayIntersect(ray, its))
+            {
+                if (its.isEmitter())
+                {
                     value = its.Le(-ray.d);
                     dRec.setQuery(ray, its);
-                    Float lumPdf = (!(bRec.sampledType & BSDF::EDelta)) ?
-                        scene->pdfEmitterDirect(dRec) : 0;
+                    Float lumPdf = (!(bRec.sampledType & BSDF::EDelta)) ? scene->pdfEmitterDirect(dRec) : 0;
                     Float misW = misWeight(bsdfPdf, lumPdf, PathBSDF);
                     Li += throughput * value * misW;
                     return Li;
                 }
             }
 
-            if (rRec.depth >= m_rrDepth) {
+            if (rRec.depth >= m_rrDepth)
+            {
                 /* Russian roulette: try to keep path weights equal to one,
                    while accounting for the solid angle compression at refractive
                    index boundaries. Stop with at least some probability to avoid
                    getting stuck (e.g. due to total internal reflection) */
 
-                Float q = std::min(throughput.max() * eta * eta, (Float) 0.95f);
+                Float q = std::min(throughput.max() * eta * eta, (Float)0.95f);
                 if (rRec.nextSample1D() >= q)
                     break;
                 throughput /= q;

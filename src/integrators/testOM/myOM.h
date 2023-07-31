@@ -6,7 +6,7 @@ MTS_NAMESPACE_BEGIN
 
 #define OMSIZE 128
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 4
+#define OMNUMSQRT 16
 #define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 #define MASK_h27b 0xffffffe0
@@ -76,9 +76,9 @@ public:
         return bom[x][y][z >> 5] & (1 << (z & MASK_l5b));
     }
 
-    inline void get(Point3i p) const
+    inline bool get(Point3i p) const
     {
-        get(p.x, p.y, p.z);
+        return get(p.x, p.y, p.z);
     }
 
     inline bool anyHit(int x, int y) const
@@ -266,7 +266,8 @@ public:
         return false;
     }
 
-    inline Float marchOneCube(const Point3 &p, const Vector3 &d) const {
+    inline Float marchOneCube(const Point3 &p, const Vector3 &d) const
+    {
         Point3 p1;
         Point3i pi;
         Vector3 d1;
@@ -274,25 +275,37 @@ public:
         getGridIndexf2i(p1, pi);
         getGridDirf(d, d1);
         Float t = 1e30f;
-        t = std::min(t, d1.x > 0 ? (pi.x+1-p1.x)/d1.x : (pi.x-p1.x)/d1.x);
-        t = std::min(t, d1.y > 0 ? (pi.y+1-p1.y)/d1.y : (pi.y-p1.y)/d1.y);
-        t = std::min(t, d1.z > 0 ? (pi.z+1-p1.z)/d1.z : (pi.z-p1.z)/d1.z);
+        if (d1.x != 0)
+            t = std::min(t, d1.x > 0 ? (pi.x + 1 - p1.x) / d1.x : (pi.x - p1.x) / d1.x);
+        if (d1.y != 0)
+            t = std::min(t, d1.y > 0 ? (pi.y + 1 - p1.y) / d1.y : (pi.y - p1.y) / d1.y);
+        if (d1.z != 0)
+            t = std::min(t, d1.z > 0 ? (pi.z + 1 - p1.z) / d1.z : (pi.z - p1.z) / d1.z);
+        if (t < 0)
+            SLog(EError, "negative step");
         return t;
     }
 
-    bool visibilityBOM(Point3 p1, Point3 p2) const {
-        Ray r;
+    bool visibilityBOM(const Point3& o1, const Point3& o2) const
+    {
+        Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
+        Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+        Point3 p1 = Point3(o1_aligned);
+        Point3 p2 = Point3(o2_aligned);
         Vector3 d = p2 - p1;
-        Float dLength = d.length(); 
+        Float dLength = d.length();
         d = d / dLength;
 
-        for (int i = 0; i < 1; i++) {
-            if (pointInAABB(p1, m_AABB)){
+        for (int i = 0; i < 2; i++)
+        {
+            if (pointInAABB(p1, m_AABB))
+            {
                 Float t = marchOneCube(p1, d);
                 p1 = p1 + d * (t + Epsilon);
                 dLength -= t;
             }
-            if (pointInAABB(p2, m_AABB)){
+            if (pointInAABB(p2, m_AABB))
+            {
                 Float t = marchOneCube(p2, -d);
                 p2 = p2 - d * (t + Epsilon);
                 dLength -= t;
@@ -300,14 +313,32 @@ public:
             if (dLength < Epsilon)
                 return true;
         }
-
-        Float nearT;
-        r.o = p1;
-        r.d = d;
-        if(rayIntersect(r, nearT))
-            return nearT > dLength - Epsilon;
-        else
-            return true;
+        while (dLength > Epsilon)
+        {
+            Point3i p1i;
+            getGridIndexi(p1, p1i);
+            if (check(p1i))
+            {
+                if (get(p1i))
+                    return false;
+            }
+            else
+            {
+                return true;
+            }
+            Float t = marchOneCube(p1, d);
+            p1 = p1 + d * (t + Epsilon);
+            dLength -= t;
+        }
+        return true;
+        // Float nearT;
+        // Ray r;
+        // r.o = p2;
+        // r.d = -d;
+        // if (rayIntersect(r, nearT))
+        //     return nearT > dLength - Epsilon;
+        // else
+        //     return true;
     }
 
     bool Trace(const Ray &ray, Float &nearT) const
@@ -333,8 +364,8 @@ public:
         Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
         Float x1 = (o1_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
         Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
-        Float x2 = (o2_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
-        Float y2 = (o2_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
+        // Float x2 = (o2_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
+        // Float y2 = (o2_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
         int x = (int)floor(x1);
         int y = (int)floor(y1);
         if (!check(x, y, 0))
@@ -347,12 +378,12 @@ public:
             z1 = z2;
             z2 = t;
         }
-        if (z2 - z1 < 2)
+        if (z2 - z1 < 4)
         {
             return true;
         }
-        z1 += 1;
-        z2 -= 1;
+        z1 += 2;
+        z2 -= 2;
         if (z1 < 0)
             z1 = 0;
         else if (z1 >= omSize)
@@ -371,23 +402,23 @@ public:
         }
         else
         {
-            Float dx = (x2 - x1) / (p2 - p1);
-            Float dy = (y2 - y1) / (p2 - p1);
+            // Float dx = (x2 - x1) / (p2 - p1);
+            // Float dy = (y2 - y1) / (p2 - p1);
             if (bom[x][y][p1] >> r1 != 0)
                 return false;
             for (int i = p1 + 1; i < p2; i++)
             {
-                x1 += dx;
-                y1 += dy;
-                x = (int)floor(x1);
-                y = (int)floor(y1);
+                // x1 += dx;
+                // y1 += dy;
+                // x = (int)floor(x1);
+                // y = (int)floor(y1);
                 if (bom[x][y][i] != 0)
                     return false;
             }
-            x1 += dx;
-            y1 += dy;
-            x = (int)floor(x1);
-            y = (int)floor(y1);
+            // x1 += dx;
+            // y1 += dy;
+            // x = (int)floor(x1);
+            // y = (int)floor(y1);
             if (bom[x][y][p2] << r2 != 0)
                 return false;
         }
