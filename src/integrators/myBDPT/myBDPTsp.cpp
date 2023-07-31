@@ -95,7 +95,7 @@ public:
             Intersection its;
             traceLightSubpath(its, sampler, scene, lightPath);
             if (m_lightCnt == 0)
-                m_lightLength = lightPath.size();
+                m_lightLength = (Float) lightPath.size();
             else
                 m_lightLength += (lightPath.size() - m_lightLength) / (m_lightCnt + 1);
             ++m_lightCnt;
@@ -137,8 +137,8 @@ public:
 
         std::vector<BDPTVertex*> lightPath;
 
-        int s1 = lightPath1.size();
-        int s2 = lightPath2.size();
+        int s1 = (int) lightPath1.size();
+        int s2 = (int) lightPath2.size();
         int s = s1 + s2;
 
         if (rand() % s < s1) {

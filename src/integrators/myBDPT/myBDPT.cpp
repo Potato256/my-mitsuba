@@ -140,32 +140,6 @@ public:
 
         return Li;
     }
-        
-    /// wi point outwards
-    Float computePdfForward(Vector3& wi, BDPTVertex* mid, BDPTVertex* next) const {
-        Intersection its;
-        its.p = mid->pos;
-        its.shFrame = Frame(mid->n);
-        its.uv = mid->uv;
-        its.hasUVPartials = 0;
-        Vector3 d = next->pos - mid->pos;
-        Float distSquared = d.lengthSquared();
-        d /= sqrt(distSquared);
-        BSDFSamplingRecord bRec(its, its.toLocal(wi), its.toLocal(d), ERadiance);
-        Float pdfBsdf = mid->bsdf->pdf(bRec);
-        return pdfBsdf * absDot(next->n, d) / distSquared;
-    }
-
-    Float computePdfLightDir(BDPTVertex* l, BDPTVertex* e) const {
-        PositionSamplingRecord pRec(0.0f);
-        pRec.n = l->n;
-        Vector3 d = e->pos - l->pos;
-        Float distSquared = d.lengthSquared();
-        d /= sqrt(distSquared);
-        DirectionSamplingRecord dRec(d);
-        Float ans = l->e->pdfDirection(dRec, pRec) * absDot(e->n, d) / distSquared;
-        return ans;        
-    }
 
     void traceEyeSubpath(
         RayDifferential &eyeRay,
