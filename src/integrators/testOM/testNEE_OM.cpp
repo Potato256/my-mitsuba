@@ -37,18 +37,6 @@ public:
         SamplingIntegrator::serialize(stream, manager);
     }
 
-    int nearestOMindex(Vector3 d) const
-    {
-        if (d.z < 0)
-            d = -d;
-        Point2 uv = direct2uv(d);
-        if (uv.x > 0.999999)
-            uv.x = 0.999999;
-        if (uv.y > 0.999999)
-            uv.y = 0.999999;
-        return int(floor(uv.x * OMNUMSQRT)) * OMNUMSQRT + int(floor(uv.y * OMNUMSQRT));
-    }
-
     /// Preprocess function -- called on the initiating machine
     bool preprocess(const Scene *scene, RenderQueue *queue,
                     const RenderJob *job, int sceneResID, int cameraResID,
@@ -127,8 +115,10 @@ public:
                 throughput /= 1 - q;
                 Spectrum value = scene->sampleEmitterDirect(dRec, rRec.nextSample2D(),false);
 
-                int id = nearestOMindex(dRec.d);
-                if(!roma[id].Visible(its.p, dRec.p))
+                int id = OM::nearestOMindex(dRec.d);
+
+                // if(!roma[id].visibilityBOM(its.p+its.shFrame.n * 0.5, dRec.p))
+                if(!roma[id].Visible(its.p+its.shFrame.n * 0.5, dRec.p))
                 // Float nearT;
                 // Ray r = Ray(dRec.p, dRec.d, ray.time);
                 // if(m_om.rayIntersect(r,nearT))

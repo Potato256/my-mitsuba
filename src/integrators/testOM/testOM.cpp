@@ -46,8 +46,7 @@ public:
         Point m_min(1e30f), m_max(-1e30f), m_center, m_lcorner;
         auto meshes = scene->getMeshes();
 
-        for (auto m : meshes)
-        {
+        for (auto m : meshes) {
             // SLog(EInfo, m->toString().c_str());
             m_min.x = std::min(m_min.x, m->getAABB().min.x);
             m_min.y = std::min(m_min.y, m->getAABB().min.y);
@@ -107,7 +106,7 @@ public:
 
         Ray r2(r);
         r2.d = normalize(Vector(1,1,1));
-        int id = OM::nearestOMindex(r2);
+        int id = OM::nearestOMindex(r2.d);
         // return Spectrum(Float(id) / OMNUM) * m_color;
         // SLog(EInfo, "id: %d", id);
         if (roma[id].rayIntersect(r, nearT))

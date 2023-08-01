@@ -1,5 +1,6 @@
 #include <mitsuba/render/scene.h>
 #include <mitsuba/core/plugin.h>
+#include <mitsuba/render/renderqueue.h>
 #include "myBDPT.h"
 
 #if defined(MTS_OPENMP)
@@ -27,6 +28,8 @@ private:
     
     ref<Bitmap> m_bitmap;
 
+    bool m_running;
+
     static int m_LiCount;
 
 public:
@@ -44,6 +47,7 @@ public:
         m_LVC = new BDPTVertex[m_LVCMaxVertexSize];
 
         m_LVCVertexSize = 0;
+        m_running = true;
     }
     
     // Unserialize from a binary data stream
@@ -86,7 +90,9 @@ public:
         return true;
     }
 
-    void cancel(){}
+    void cancel(){
+        m_running = false;
+    }
     
     bool render(Scene *scene, RenderQueue *queue,
         const RenderJob *job, int sceneResID, int sensorResID, int unused) {
@@ -112,7 +118,7 @@ public:
             clonedSampler->incRef();
             samplers[i] = clonedSampler.get();
         }
-        
+
         int samplerResID = sched->registerMultiResource(samplers);
 
         /* Allocate memory */
@@ -150,14 +156,18 @@ public:
 
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
 
-        for (int yofs=0; yofs<cropSize.y; ++yofs) {
-            for (int xofs=0; xofs<cropSize.x; ++xofs) {
-                target[yofs*cropSize.x+xofs] = Spectrum(1.0f);
+        for (int i =0; i < sampleCount; ++i) {
+            if (!m_running) 
+                break;
+            for (int yofs=0; yofs<i; ++yofs) {
+                for (int xofs=0; xofs<cropSize.x; ++xofs) {
+                    target[yofs*cropSize.x+xofs] = Spectrum(1.0f);
+                }
             }
+            film->setBitmap(m_bitmap);       
+            queue->signalRefresh(job); 
         }
 
-        
-        film->setBitmap(m_bitmap);
         printInfos();
         
         delete []LVCSize;

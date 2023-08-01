@@ -3,8 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-Point2 direct2uv(const Vector3& v)
-{
+Point2 direct2uv(const Vector3& v) {
     Float r = sqrt(1 - v.z);
     Float phi = atan2(v.y, v.x);
     if (r == 0)
@@ -35,7 +34,7 @@ Point2 direct2uv(const Vector3& v)
     return Point2((a + 1) / 2, (b + 1) / 2);
 }
 
-inline bool pointInAABB(const Point3& p, const AABB& aabb){
+inline bool pointInAABB(const Point3& p, const AABB& aabb) {
     return (p.x >= aabb.min.x && p.x <= aabb.max.x &&
         p.y >= aabb.min.y && p.y <= aabb.max.y &&
         p.z >= aabb.min.z && p.z <= aabb.max.z);
