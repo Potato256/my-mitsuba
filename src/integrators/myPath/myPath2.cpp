@@ -22,13 +22,17 @@ private:
     Float m_rrEye;
 
     ref<Bitmap> m_bitmap;
+    int m_blockSize;
     bool m_running;
+
+    std::vector<Point2i> blockOfs;
 
 public:
     /// Initialize the integrator with the specified properties
     myPath2Integrator(const Properties &props) : Integrator(props) {
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
         m_rrEye = props.getFloat("rrEye", 0.6);
+        m_blockSize = props.getInteger("blockSize", 100);
 
         m_running = true;
     }
@@ -47,6 +51,7 @@ public:
         oss<<"\n--------- myPath2 Info Print ----------\n";
         oss<<"maxDepthEye: "<<m_maxDepthEye<<endl;
         oss<<"rrEye: "<<m_rrEye<<endl;
+        oss<<"blockSize: "<<m_blockSize<<endl;
         oss<<"-----------------------------------------\n";
         SLog(EDebug, oss.str().c_str());
     }
@@ -57,6 +62,20 @@ public:
         int samplerResID) {
         Integrator::preprocess(scene, queue, job, sceneResID,
             cameraResID, samplerResID);
+
+        blockOfs.clear();
+        const Film* film = scene->getSensor()->getFilm();  
+        Vector2i cropSize = film->getCropSize();
+        Point2i cropOffset = film->getCropOffset();
+        int w = cropSize.x / m_blockSize + 1;
+        int h = cropSize.y / m_blockSize + 1;
+        for (int i = 0; i < w; ++i){
+            for (int j = 0; j < h; ++j){
+                blockOfs.push_back(
+                    Point2i(cropOffset.x+i*m_blockSize, cropOffset.y+j*m_blockSize));
+            }
+        }
+
         printInfos();
 
         return true;
@@ -109,36 +128,46 @@ public:
 
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
 
-        for (int i =0; i < sampleCount; ++i) {
-
+        for (int i = 0; i < sampleCount; ++i) {
+            std::cout << "Frame: " << i << std::endl;
             if (!m_running) 
                 break;
-            
             /* Trace eye subpath*/
-            for (int yofs=0; yofs<cropSize.y; ++yofs) {
-                for (int xofs=0; xofs<cropSize.x; ++xofs) {
-                    
-                    // if (xofsInt + xofs >= cropSize.x)
-                    //     continue;
-                    Point2 apertureSample, samplePos;
-                    Float timeSample = 0.0f;
-                    
-                    if (needsApertureSample)
-                        apertureSample = sampler->next2D();
-                    if (needsTimeSample)
-                        timeSample = sampler->next1D();
-                    samplePos = sampler->next2D();
-                    
-                    samplePos.y += cropOffset.y + yofs;
-                    samplePos.x += cropOffset.x + xofs;
+            int blockCnt = (int) blockOfs.size();
+            #if defined(MTS_OPENMP)
+                #pragma omp parallel for schedule(dynamic)
+            #endif
+            for (int block = 0; block < blockCnt; ++block) {
+                Point2i& bOfs = blockOfs[block];
+                int xBlockOfs = bOfs.x;
+                int yBlockOfs = bOfs.y;
 
-                    RayDifferential eyeRay;
-                    Spectrum sampleValue = sensor->sampleRay(
-                        eyeRay, samplePos, apertureSample, timeSample);   
-                    
-                    int ofs = yofs*cropSize.x+xofs;
-                    target[ofs] = (target[ofs]*i + Li(eyeRay, scene, sampler))/(i+1.0f);
+                for (int yofs=0; yofs<m_blockSize; ++yofs) {
+                    for (int xofs=0; xofs<m_blockSize; ++xofs) {
+                        int xRealOfs = xBlockOfs + xofs;
+                        int yRealOfs = yBlockOfs + yofs;
+                        if (xRealOfs >= cropSize.x || yRealOfs >= cropSize.y)
+                            continue;
+                        Point2 apertureSample, samplePos;
+                        
+                        if (needsApertureSample)
+                            apertureSample = sampler->next2D();
+                        samplePos = sampler->next2D();
+                        
+                        samplePos.y += cropOffset.y + yRealOfs;
+                        samplePos.x += cropOffset.x + xRealOfs;
+    
+                        RayDifferential eyeRay;
+                        Spectrum sampleValue = sensor->sampleRay(
+                            eyeRay, samplePos, apertureSample, 0.0f);   
+                        
+                        int ofs = yRealOfs*cropSize.x+xRealOfs;
+                        Spectrum L = Li(eyeRay, scene, sampler);
+                        float i_ = (float) i;
+                        target[ofs] = (target[ofs]*i_ + L)/(i_+1.0f);
+                    }
                 }
+
             }
             film->setBitmap(m_bitmap);       
             queue->signalRefresh(job); 
@@ -147,18 +176,6 @@ public:
         printInfos();
         
         return true;
-    }
-
-    inline Float misWeight(Float pdfBSDF, Float pdfDirect, SamplingStrategy strategy) const {
-        switch (strategy)
-        {
-        case PathBSDF:
-            return mis(pdfBSDF, pdfDirect);
-        case PathNEE:
-            return mis(pdfDirect, pdfBSDF);
-        default:
-            return 0;
-        }
     }
 
     inline Float mis(Float p1, Float p2) const {
@@ -186,8 +203,6 @@ public:
                 break;
             
             const BSDF *bsdf = its.getBSDF(ray);
-
-            /* Estimate the direct illumination if this is requested */
             DirectSamplingRecord dRec(its);
 
             if (bsdf->getType() & BSDF::ESmooth) {
@@ -195,19 +210,13 @@ public:
                 if (!value.isZero()) {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
 
-                    /* Allocate a record for querying the BSDF */
                     BSDFSamplingRecord bRec(its, its.toLocal(dRec.d), ERadiance);
-
-                    /* Evaluate BSDF * cos(theta) */
                     const Spectrum bsdfVal = bsdf->eval(bRec);
 
                     if (!bsdfVal.isZero()) {
-                        /* Calculate prob. of having generated that direction
-                           using BSDF sampling */
                         Float bsdfPdf = (emitter->isOnSurface() && dRec.measure == ESolidAngle)
                             ? bsdf->pdf(bRec) : 0;
-                        /* Weight using the power heuristic */
-                        Float misW = misWeight(bsdfPdf, dRec.pdf, PathNEE);
+                        Float misW = mis(dRec.pdf, bsdfPdf);
                         Li += throughput * value * bsdfVal * misW;
                     }
                 }
@@ -222,12 +231,9 @@ public:
             
             const Vector wo = its.toWorld(bRec.wo);
             
-            /* Keep track of the throughput and relative
-               refractive index along the path */
             throughput *= bsdfWeight ;
             eta *= bRec.eta;
 
-            /* Trace a ray in this direction */
             ray = Ray(its.p, wo, ray.time);
 
             Spectrum value;
@@ -237,7 +243,7 @@ public:
                     dRec.setQuery(ray, its);
                     Float lumPdf = (!(bRec.sampledType & BSDF::EDelta)) ?
                         scene->pdfEmitterDirect(dRec) : 0;
-                    Float misW = misWeight(bsdfPdf, lumPdf, PathBSDF);
+                    Float misW = mis(bsdfPdf, lumPdf);
                     Li += throughput * value * misW;
                     return Li;
                 }
@@ -247,7 +253,6 @@ public:
             if (sampler->next1D() >= q)
                 break;
             throughput /= q;
-
             ++depth;
         }
         return Li;
