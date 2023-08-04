@@ -19,6 +19,7 @@
 #include <mitsuba/core/statistics.h>
 #include <mitsuba/render/integrator.h>
 #include <mitsuba/render/renderproc.h>
+#include <time.h>
 
 MTS_NAMESPACE_BEGIN
 
@@ -60,6 +61,8 @@ Spectrum SamplingIntegrator::E(const Scene *scene, const Intersection &its,
     Frame frame(its.shFrame.n);
 
     sampler->generate(Point2i(0));
+    clock_t start, end;
+    start = clock();
     for (int i=0; i<nSamples; i++) {
         /* Sample the direct illumination component */
         int maxIntermediateInteractions = -1;
@@ -83,7 +86,8 @@ Spectrum SamplingIntegrator::E(const Scene *scene, const Intersection &its,
 
         sampler->advance();
     }
-
+    end = clock();
+    SLog(EInfo, "time per sample: %f", Float(end - start) / CLOCKS_PER_SEC / nSamples);
     return E / (Float) nSamples;
 }
 
@@ -159,6 +163,9 @@ void SamplingIntegrator::renderBlock(const Scene *scene,
     if (!sensor->getFilm()->hasAlpha()) /* Don't compute an alpha channel if we don't have to */
         queryType &= ~RadianceQueryRecord::EOpacity;
 
+    clock_t start, end;
+    start = clock();
+
     for (size_t i = 0; i<points.size(); ++i) {
         Point2i offset = Point2i(points[i]) + Vector2i(block->getOffset());
         if (stop)
@@ -185,6 +192,8 @@ void SamplingIntegrator::renderBlock(const Scene *scene,
             sampler->advance();
         }
     }
+    end = clock();
+    SLog(EInfo, "time per sample: %f", (Float)(end - start) / CLOCKS_PER_SEC / sampler->getSampleCount());
 }
 
 MonteCarloIntegrator::MonteCarloIntegrator(const Properties &props) : SamplingIntegrator(props) {

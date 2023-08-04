@@ -99,6 +99,7 @@ void RenderJob::run() {
             Log(EWarn, "Preprocessing of scene \"%s\" did not complete successfully!",
                 m_scene->getSourceFile().filename().string().c_str());
         }
+        Log(EInfo, "Preprocessing time: %s", timeString(m_queue->getRenderTime(this), true).c_str());
 
         // Log(EInfo, m_scene.toString().c_str());
         // Log(EInfo, m_scene->getAABB().toString().c_str());
