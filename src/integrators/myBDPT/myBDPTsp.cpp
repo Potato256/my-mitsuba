@@ -2,10 +2,10 @@
 #include <mitsuba/core/plugin.h>
 #include "myBDPT.h"
 
-#define BDPT_ONLT_PT
+#define ONLY_PT
 #define DEBUG
 
-// #undef BDPT_ONLT_PT
+// #undef ONLY_PT
 #undef DEBUG
 
 MTS_NAMESPACE_BEGIN
@@ -461,7 +461,7 @@ public:
         if (m_MISmode == UniformHeuristic) 
             return 1.0f / numStrategy;        
 
-#ifdef BDPT_ONLT_PT
+#ifdef ONLY_PT
         if (lightEnd != 0 && lightEnd != -1)
             return 0.0f;
 #endif
@@ -569,7 +569,7 @@ public:
             Float tmp = 1.0f;
             for (int i = curStrategy - 1; i >= 0 ; --i) {
                 tmp *= pdfInverse[i+1] / pdfForward[i]; 
-#ifdef BDPT_ONLT_PT
+#ifdef ONLY_PT
                 if (i==numStrategy-1||i==numStrategy-2)
 #endif
                 denominator += tmp;
@@ -577,7 +577,7 @@ public:
             tmp = 1.0f;
             for (int i = curStrategy + 1; i < numStrategy; ++i) {
                 tmp *= pdfForward[i-1] / pdfInverse[i];
-#ifdef BDPT_ONLT_PT
+#ifdef ONLY_PT
                 if (i==numStrategy-1||i==numStrategy-2)
 #endif
                 denominator += tmp;
@@ -587,7 +587,7 @@ public:
             Float tmp = 1.0f;
             for (int i = curStrategy - 1; i >= 0 ; --i) {
                 tmp *= pdfInverse[i+1] / pdfForward[i];
-#ifdef BDPT_ONLT_PT
+#ifdef ONLY_PT
                 if (i==numStrategy-1||i==numStrategy-2)
 #endif
                 denominator += tmp*tmp;
@@ -595,7 +595,7 @@ public:
             tmp = 1.0f;
             for (int i = curStrategy + 1; i < numStrategy; ++i) {
                 tmp *= pdfForward[i-1] / pdfInverse[i];
-#ifdef BDPT_ONLT_PT
+#ifdef ONLY_PT
                 if (i==numStrategy-1||i==numStrategy-2)
 #endif
                 denominator += tmp*tmp;

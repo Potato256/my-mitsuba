@@ -32,7 +32,6 @@ public:
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
         m_rrEye = props.getFloat("rrEye", 0.6);
         m_blockSize = props.getInteger("blockSize", 64);
-
         m_running = true;
     }
     
@@ -74,9 +73,7 @@ public:
                     Point2i(cropOffset.x+i*m_blockSize, cropOffset.y+j*m_blockSize));
             }
         }
-
         printInfos();
-
         return true;
     }
 
@@ -101,8 +98,6 @@ public:
         Vector2i cropSize = film->getCropSize();
         Point2i cropOffset = film->getCropOffset();
 
-        // std::cout<<cropOffset.toString()<<std::endl;
-
         size_t nCores = sched->getCoreCount();
                 
         Log(EInfo, "Starting render job (%ix%i, " SIZE_T_FMT " %s, " SSE_STR ") ..",
@@ -116,8 +111,6 @@ public:
             clonedSampler->incRef();
             samplers[i] = clonedSampler.get();
         }
-
-        // int samplerResID = sched->registerMultiResource(samplers);
 
         /* Allocate memory */
         m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
@@ -172,9 +165,7 @@ public:
             film->setBitmap(m_bitmap);       
             queue->signalRefresh(job); 
         }
-
         printInfos();
-        
         return true;
     }
 
