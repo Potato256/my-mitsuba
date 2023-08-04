@@ -17,7 +17,7 @@
 #define DEBUG
 
 #undef ONLY_PT
-// #undef ONLY_NEE
+#undef ONLY_NEE
 #undef ONLY_BSDF
 #undef DEBUG
 
@@ -169,7 +169,6 @@ public:
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
 
         for (int i = 0; i < sampleCount; ++i) {
-            std::cout << "Frame: " << i << std::endl;
             SLog(EInfo, "Frame: %i\n", i);
             if (!m_running) 
                 break;
@@ -204,8 +203,11 @@ public:
             #endif
             
             m_k = float(m_LVCVertexSize) / float(m_LVCPathSize);
+            #if defined(ONLY_PT) || defined(ONLY_NEE)
+                m_k = 1; 
+            #endif
 
-            std::cout << "k: "<< m_k <<std::endl;
+            SLog(EInfo, "k: %f\n", m_k);
 
             /* Trace eye subpath*/
             int blockCnt = (int) blockOfs.size();
@@ -659,9 +661,8 @@ public:
                 BDPTVertex* lightEnd = &m_LVC[choice];
                 Spectrum value;
                 if(evalContri(eyeEnd, lightEnd, scene, value)) {
-                    Li += value * MISweight(eyePath, j, choice);
-
-                    // Li += value * MISweight(eyePath, j, choice) * m_k;
+                    Li += value * MISweight(eyePath, j, choice) * m_k
+                        / float(m_LVCConnectTimes);
                 }
             }
         }
