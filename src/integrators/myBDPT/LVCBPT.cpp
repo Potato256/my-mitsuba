@@ -27,7 +27,8 @@ private:
     BDPTVertex* m_LVC; 
     
     ref<Bitmap> m_bitmap;
-
+    std::vector<Point2i> blockOfs;
+    int m_blockSize;
     bool m_running;
 
 public:
@@ -38,6 +39,7 @@ public:
         m_maxDepthLight = props.getInteger("maxDepthLight", 5);
         m_rrEye = props.getFloat("rrEye", 0.6);
         m_rrLight = props.getFloat("rrLight", 0.6);
+        m_blockSize = props.getInteger("blockSize", 64);
 
         m_LVCTotalSize = m_LVCPathSize * m_maxDepthLight * sizeof(BDPTVertex);
         m_LVCMaxVertexSize = m_LVCPathSize * m_maxDepthLight;
@@ -82,6 +84,19 @@ public:
             cameraResID, samplerResID);
         printInfos();
         m_LVCVertexSize = 0;
+
+        blockOfs.clear();
+        const Film* film = scene->getSensor()->getFilm();  
+        Vector2i cropSize = film->getCropSize();
+        Point2i cropOffset = film->getCropOffset();
+        int w = cropSize.x / m_blockSize + 1;
+        int h = cropSize.y / m_blockSize + 1;
+        for (int i = 0; i < w; ++i){
+            for (int j = 0; j < h; ++j){
+                blockOfs.push_back(
+                    Point2i(cropOffset.x+i*m_blockSize, cropOffset.y+j*m_blockSize));
+            }
+        }
 
         return true;
     }

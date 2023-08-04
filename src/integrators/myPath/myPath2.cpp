@@ -22,17 +22,16 @@ private:
     Float m_rrEye;
 
     ref<Bitmap> m_bitmap;
+    std::vector<Point2i> blockOfs;
     int m_blockSize;
     bool m_running;
-
-    std::vector<Point2i> blockOfs;
 
 public:
     /// Initialize the integrator with the specified properties
     myPath2Integrator(const Properties &props) : Integrator(props) {
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
         m_rrEye = props.getFloat("rrEye", 0.6);
-        m_blockSize = props.getInteger("blockSize", 100);
+        m_blockSize = props.getInteger("blockSize", 64);
 
         m_running = true;
     }
@@ -111,25 +110,24 @@ public:
             nCores, nCores == 1 ? "core" : "cores");
             
         /* Create a sampler instance for every core */
-        std::vector<SerializableObject *> samplers(sched->getCoreCount());
+        std::vector<Sampler *> samplers(sched->getCoreCount());
         for (size_t i=0; i<sched->getCoreCount(); ++i) {
             ref<Sampler> clonedSampler = sampler->clone();
             clonedSampler->incRef();
             samplers[i] = clonedSampler.get();
         }
 
-        int samplerResID = sched->registerMultiResource(samplers);
+        // int samplerResID = sched->registerMultiResource(samplers);
 
         /* Allocate memory */
         m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
         m_bitmap->clear();
 
-        int* LVCSize = new int[nCores];
-
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
 
         for (int i = 0; i < sampleCount; ++i) {
             std::cout << "Frame: " << i << std::endl;
+            SLog(EInfo, "Frame: %i\n", i);
             if (!m_running) 
                 break;
             /* Trace eye subpath*/
@@ -138,6 +136,8 @@ public:
                 #pragma omp parallel for schedule(dynamic)
             #endif
             for (int block = 0; block < blockCnt; ++block) {
+                int tid = mts_omp_get_thread_num();
+                Sampler* sampler = samplers[tid];
                 Point2i& bOfs = blockOfs[block];
                 int xBlockOfs = bOfs.x;
                 int yBlockOfs = bOfs.y;
