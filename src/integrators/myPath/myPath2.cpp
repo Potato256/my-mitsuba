@@ -11,12 +11,15 @@ MTS_NAMESPACE_BEGIN
 class myPath2Integrator : public Integrator {
 public:
     MTS_DECLARE_CLASS()
+    enum SamplingStrategy {
+        PathBSDF = 0,
+        PathNEE,
+        PathMIS
+    };
 
 private:    
     int m_maxDepthEye;
-    int m_maxDepthLight;
     Float m_rrEye;
-    Float m_rrLight;
 
     ref<Bitmap> m_bitmap;
     bool m_running;
@@ -25,9 +28,7 @@ public:
     /// Initialize the integrator with the specified properties
     myPath2Integrator(const Properties &props) : Integrator(props) {
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
-        m_maxDepthLight = props.getInteger("maxDepthLight", 5);
         m_rrEye = props.getFloat("rrEye", 0.6);
-        m_rrLight = props.getFloat("rrLight", 0.6);
 
         m_running = true;
     }
@@ -43,11 +44,9 @@ public:
 
     void printInfos(){
         std::ostringstream oss;
-        oss<<"\n---------- LVCBPT Info Print -----------\n";
+        oss<<"\n--------- myPath2 Info Print ----------\n";
         oss<<"maxDepthEye: "<<m_maxDepthEye<<endl;
-        oss<<"maxDepthLight: "<<m_maxDepthLight<<endl;
         oss<<"rrEye: "<<m_rrEye<<endl;
-        oss<<"rrLight: "<<m_rrLight<<endl;
         oss<<"-----------------------------------------\n";
         SLog(EDebug, oss.str().c_str());
     }
@@ -84,6 +83,8 @@ public:
         Vector2i cropSize = film->getCropSize();
         Point2i cropOffset = film->getCropOffset();
 
+        // std::cout<<cropOffset.toString()<<std::endl;
+
         size_t nCores = sched->getCoreCount();
                 
         Log(EInfo, "Starting render job (%ix%i, " SIZE_T_FMT " %s, " SSE_STR ") ..",
@@ -113,39 +114,10 @@ public:
             if (!m_running) 
                 break;
             
-            /* Trace LVC */
-            m_LVCVertexSize = 0;
-            memset(LVCSize, 0, sizeof(int)*nCores);
-            #define MTS_OPENMP
-            #if defined(MTS_OPENMP)
-                #pragma omp parallel
-                {   
-                    int tid = mts_omp_get_thread_num();
-                    Sampler *sampler = static_cast<Sampler *>(samplers[tid]);
-                    int pSize = m_LVCPathSize / nCores;
-                    int vSize = pSize * m_maxDepthLight * tid;
-                    for (int i = 0; i < pSize; ++i)
-                        traceLightSubpath(sampler, scene, 
-                            tmp_LVC + vSize , LVCSize[tid]);
-                    #pragma omp critical
-                    {
-                        int start = m_LVCVertexSize;
-                        m_LVCVertexSize += LVCSize[tid];
-                        memcpy(m_LVC + start, tmp_LVC + vSize, 
-                            sizeof(BDPTVertex) * LVCSize[tid]); 
-                    }
-                }
-            #else
-                for (int i = 0; i < m_LVCPathSize; ++i)
-                    traceLightSubpath(sampler, scene, m_LVC, m_LVCVertexSize);
-            #endif
-
             /* Trace eye subpath*/
             for (int yofs=0; yofs<cropSize.y; ++yofs) {
                 for (int xofs=0; xofs<cropSize.x; ++xofs) {
                     
-                    Spectrum Li(0.0f);
-
                     // if (xofsInt + xofs >= cropSize.x)
                     //     continue;
                     Point2 apertureSample, samplePos;
@@ -161,34 +133,11 @@ public:
                     samplePos.x += cropOffset.x + xofs;
 
                     RayDifferential eyeRay;
-                    
                     Spectrum sampleValue = sensor->sampleRay(
-                        eyeRay, samplePos, apertureSample, timeSample);                    
-
-
-                    /* Trace first eye vertex */
-                    RayDifferential eyeRay(r);
-                    rRec.rayIntersect(eyeRay);
-                    eyeRay.mint = Epsilon;
-
-                    /* Hit nothing */
-                    if (!rRec.its.isValid())
-                        return Li;        
-                    /* Hit emitter */
-                    if ( rRec.its.isEmitter())
-                        return rRec.its.Le(-eyeRay.d);
-
-                    std::vector<BDPTVertex*> eyePath;
-                    /* Trace eye subpath */
-                    traceEyeSubpath(eyeRay, rRec.its, rRec.sampler, rRec.scene, eyePath, Li);
-
-                    /* Connect eye subpath and light subpath */
-                    connectSubpaths(eyePath, lightPath, rRec.scene, Li);
-
-                    /* Clean up */
-                    for (auto i : eyePath) delete i;
-
-                    target[yofs*cropSize.x+xofs] = Spectrum(1.0f);
+                        eyeRay, samplePos, apertureSample, timeSample);   
+                    
+                    int ofs = yofs*cropSize.x+xofs;
+                    target[ofs] = (target[ofs]*i + Li(eyeRay, scene, sampler))/(i+1.0f);
                 }
             }
             film->setBitmap(m_bitmap);       
@@ -198,6 +147,110 @@ public:
         printInfos();
         
         return true;
+    }
+
+    inline Float misWeight(Float pdfBSDF, Float pdfDirect, SamplingStrategy strategy) const {
+        switch (strategy)
+        {
+        case PathBSDF:
+            return mis(pdfBSDF, pdfDirect);
+        case PathNEE:
+            return mis(pdfDirect, pdfBSDF);
+        default:
+            return 0;
+        }
+    }
+
+    inline Float mis(Float p1, Float p2) const {
+        return p1 / (p1 + p2);
+    }
+
+    /// Query for an unbiased estimate of the radiance along <tt>r</tt>
+    Spectrum Li(const RayDifferential &r, Scene* scene, Sampler* sampler) const {
+        /* Some aliases and local variables */
+        Intersection its;
+        RayDifferential ray(r);
+        Spectrum Li(0.0f);
+        Spectrum throughput(1.0f);
+        Float eta = 1.0f;
+
+        scene->rayIntersect(ray, its);
+        ray.mint = Epsilon;
+
+        if (its.isValid() && its.isEmitter())
+            return its.Le(-ray.d);
+
+        int depth = 1;
+        while(depth <= m_maxDepthEye) {
+            if (!its.isValid())
+                break;
+            
+            const BSDF *bsdf = its.getBSDF(ray);
+
+            /* Estimate the direct illumination if this is requested */
+            DirectSamplingRecord dRec(its);
+
+            if (bsdf->getType() & BSDF::ESmooth) {
+                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D());
+                if (!value.isZero()) {
+                    const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
+
+                    /* Allocate a record for querying the BSDF */
+                    BSDFSamplingRecord bRec(its, its.toLocal(dRec.d), ERadiance);
+
+                    /* Evaluate BSDF * cos(theta) */
+                    const Spectrum bsdfVal = bsdf->eval(bRec);
+
+                    if (!bsdfVal.isZero()) {
+                        /* Calculate prob. of having generated that direction
+                           using BSDF sampling */
+                        Float bsdfPdf = (emitter->isOnSurface() && dRec.measure == ESolidAngle)
+                            ? bsdf->pdf(bRec) : 0;
+                        /* Weight using the power heuristic */
+                        Float misW = misWeight(bsdfPdf, dRec.pdf, PathNEE);
+                        Li += throughput * value * bsdfVal * misW;
+                    }
+                }
+            }
+
+            /* Sample BSDF * cos(theta) */
+            Float bsdfPdf;
+            BSDFSamplingRecord bRec(its, sampler, ERadiance);
+            Spectrum bsdfWeight = bsdf->sample(bRec, bsdfPdf, sampler->next2D());
+            if (bsdfWeight.isZero())
+                break;
+            
+            const Vector wo = its.toWorld(bRec.wo);
+            
+            /* Keep track of the throughput and relative
+               refractive index along the path */
+            throughput *= bsdfWeight ;
+            eta *= bRec.eta;
+
+            /* Trace a ray in this direction */
+            ray = Ray(its.p, wo, ray.time);
+
+            Spectrum value;
+            if (scene->rayIntersect(ray, its)) {
+                if (its.isEmitter()) {
+                    value = its.Le(-ray.d);
+                    dRec.setQuery(ray, its);
+                    Float lumPdf = (!(bRec.sampledType & BSDF::EDelta)) ?
+                        scene->pdfEmitterDirect(dRec) : 0;
+                    Float misW = misWeight(bsdfPdf, lumPdf, PathBSDF);
+                    Li += throughput * value * misW;
+                    return Li;
+                }
+            }
+
+            Float q = std::min(throughput.max() * eta * eta, (Float) 0.95f);
+            if (sampler->next1D() >= q)
+                break;
+            throughput /= q;
+
+            ++depth;
+        }
+        return Li;
     }
 
 };
