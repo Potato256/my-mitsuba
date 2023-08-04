@@ -1,7 +1,6 @@
 #include <mitsuba/render/scene.h>
 #include <mitsuba/core/plugin.h>
 #include <mitsuba/render/renderqueue.h>
-#include "myBDPT.h"
 
 #if defined(MTS_OPENMP)
 # include <omp.h>
@@ -9,7 +8,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-class LVCBPTIntegrator : public Integrator {
+class myPath2Integrator : public Integrator {
 public:
     MTS_DECLARE_CLASS()
 
@@ -19,37 +18,22 @@ private:
     Float m_rrEye;
     Float m_rrLight;
 
-    /* How many paths are there in LVC */
-    int m_LVCPathSize;
-    int m_LVCVertexSize;
-    int m_LVCMaxVertexSize;
-    int m_LVCTotalSize;
-    BDPTVertex* m_LVC; 
-    
     ref<Bitmap> m_bitmap;
-
     bool m_running;
 
 public:
     /// Initialize the integrator with the specified properties
-    LVCBPTIntegrator(const Properties &props) : Integrator(props) {
-        m_LVCPathSize = props.getInteger("LVCPathSize", 10000);
+    myPath2Integrator(const Properties &props) : Integrator(props) {
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
         m_maxDepthLight = props.getInteger("maxDepthLight", 5);
         m_rrEye = props.getFloat("rrEye", 0.6);
         m_rrLight = props.getFloat("rrLight", 0.6);
 
-        m_LVCTotalSize = m_LVCPathSize * m_maxDepthLight * sizeof(BDPTVertex);
-        m_LVCMaxVertexSize = m_LVCPathSize * m_maxDepthLight;
-        
-        m_LVC = new BDPTVertex[m_LVCMaxVertexSize];
-
-        m_LVCVertexSize = 0;
         m_running = true;
     }
     
     // Unserialize from a binary data stream
-    LVCBPTIntegrator(Stream *stream, InstanceManager *manager)
+    myPath2Integrator(Stream *stream, InstanceManager *manager)
         : Integrator(stream, manager) {}
     
     /// Serialize to a binary data stream
@@ -64,12 +48,6 @@ public:
         oss<<"maxDepthLight: "<<m_maxDepthLight<<endl;
         oss<<"rrEye: "<<m_rrEye<<endl;
         oss<<"rrLight: "<<m_rrLight<<endl;
-        // oss<<"MISmode: "<<m_MISmodeString<<endl;
-        oss<<"BDPTVertex size: "<<sizeof(BDPTVertex)<<endl;
-        oss<<"LVCPathSize: "<<m_LVCPathSize<<endl;
-        oss<<"LVCVertexSize: "<<m_LVCVertexSize<<endl;
-        oss<<"LVCMaxVertexSize: "<<m_LVCMaxVertexSize<<endl;
-        oss<<"LVCTotalSize: "<<m_LVCMaxVertexSize/1024 <<"KB"<<endl;
         oss<<"-----------------------------------------\n";
         SLog(EDebug, oss.str().c_str());
     }
@@ -81,7 +59,6 @@ public:
         Integrator::preprocess(scene, queue, job, sceneResID,
             cameraResID, samplerResID);
         printInfos();
-        m_LVCVertexSize = 0;
 
         return true;
     }
@@ -124,8 +101,6 @@ public:
         int samplerResID = sched->registerMultiResource(samplers);
 
         /* Allocate memory */
-        BDPTVertex* tmp_LVC = new BDPTVertex[m_LVCMaxVertexSize];
-        
         m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
         m_bitmap->clear();
 
@@ -222,131 +197,11 @@ public:
 
         printInfos();
         
-        delete []LVCSize;
-        delete []tmp_LVC;
-        
         return true;
     }
 
-    void traceLightSubpath(
-        Sampler* sampler, 
-        const Scene* scene,
-        BDPTVertex* LVC,
-        int& LVCsize
-    ) {
-        /* Trace light subpath */
-        /* Sample light position */
-        PositionSamplingRecord pRec(0.0);
-        Spectrum lightValue = scene->sampleEmitterPosition(pRec, sampler->next2D());  
-        
-        const Emitter *emitter = static_cast<const Emitter *>(pRec.object); 
-        if (pRec.measure != EArea || !emitter->isOnSurface())
-            SLog(EError, "myBDPT only supports area emitters!");
-        
-        BDPTVertex *lp = &LVC[LVCsize++];
-        lp->pos = pRec.p;
-        lp->n = pRec.n;
-        lp->value = lightValue;
-        lp->pdfLight = pRec.pdf;
-        lp->e = emitter;
-        lp->depth = 0;
-        
-        /* Sample light direction */
-        DirectionSamplingRecord dRec;       
-        emitter->sampleDirection(dRec, pRec, sampler->next2D());
-        if (dRec.measure != ESolidAngle)
-            SLog(EError, "myBDPT only supports emitters with direction sampling on SolidAngle!");
-
-        /* Trace a ray in this direction */
-        RayDifferential lightRay(pRec.p, dRec.d, 0.0f);
-
-        /* The sampling pdf of last vertex */
-        Float lastPdf = dRec.pdf ;
-
-        /* Initialize throughput */
-        Spectrum throughput(lightValue * emitter->evalDirection(dRec, pRec)
-            / dRec.pdf);
-        
-        Intersection its;
-        int lightTraceDepth = 1;
-        while(lightTraceDepth < m_maxDepthLight) {
-            /* Russian roulette */
-            Float q = m_rrLight;
-            if (sampler->next1D() >= q)
-                break;
-            throughput /= q;
-
-            /* Ray intersection */
-            scene->rayIntersect(lightRay, its);
-            /* Stop when hit nothing or hit an emitter */
-            if (!its.isValid() || its.isEmitter())
-                break;
-            
-            /* Add a vertex to the light path */
-            BDPTVertex *lp = &LVC[LVCsize++];
-            lp->pos = its.p;
-            lp->wi = -lightRay.d;
-            lp->n = its.shFrame.n;
-            lp->value = throughput;
-            lp->uv = its.uv;
-            lp->e = nullptr;
-            lp->depth = lightTraceDepth;
-
-            /* Get BSDF */
-            const BSDF *bsdf = its.getBSDF(lightRay);
-            lp->bsdf = bsdf;
-
-            /* The order of pdf/pdfInverse is opposite here comparing to eye trace! */
-            BDPTVertex *last = &LVC[LVCsize-2];
-            Float distSquared = its.t * its.t;
-            last->pdfInverse = lastPdf * absDot(lp->wi, lp->n) / distSquared;
-
-            if (lightTraceDepth >= 2) {
-                BDPTVertex *llast = &LVC[LVCsize-3];;                
-                llast->pdf = computePdfForward(lightRay.d, last, llast);
-            }
-
-            /* Sample BSDF * cos(theta) */
-            BSDFSamplingRecord bRec(its, sampler, ERadiance);
-            Spectrum bsdfWeight = bsdf->sample(bRec, lastPdf, sampler->next2D());
-            const Vector wo = its.toWorld(bRec.wo);
-
-            /* Update throughput */
-            throughput *= bsdfWeight;
-            /* Prepare next ray in this direction */
-            lightRay = Ray(its.p, wo, lightRay.time);
-            ++lightTraceDepth;
-        }
-        return;
-    }
-
-
-    void connectSubpaths(
-        std::vector<BDPTVertex*> eyePath, 
-        std::vector<BDPTVertex* lightPath,
-        const Scene* scene, 
-        Spectrum& Li
-    ) const {
-        if (eyePath.size() == 0 || lightPath.size() == 0)
-            return;
-        for (int i = 0; i < eyePath.size(); ++i) {
-            for (int j = 0; j < lightPath.size(); ++j) {
-                BDPTVertex* eyeEnd = eyePath[i];
-                BDPTVertex* lightEnd = lightPath[j];
-                Spectrum value;
-                if(evalContri(eyeEnd, lightEnd, scene, value))
-                    Li += value * MISweight(eyePath, lightPath, i, j);
-            }
-        }
-
-    }
-
-    ~LVCBPTIntegrator(){
-        free(m_LVC);
-    }
 };
 
-
-MTS_IMPLEMENT_CLASS_S(LVCBPTIntegrator, false, Integrator)
-MTS_EXPORT_PLUGIN(LVCBPTIntegrator, "LVCBPT");
+MTS_IMPLEMENT_CLASS_S(myPath2Integrator, false, Integrator)
+MTS_EXPORT_PLUGIN(myPath2Integrator, "myPath2");
 MTS_NAMESPACE_END

@@ -279,7 +279,7 @@ public:
     void printInfos(){
         std::ostringstream oss;
         oss<<"\n--------- PATH-OM Info Print ----------\n";
-        oss<<"ROMA size = " <<OMNUM*OMSIZE*OMSIZE*OMSIZE/8/1024/1024 << " MB\n";
+        oss<<"ROMA size = " <<1.0f*OMNUM*OMSIZE*OMSIZE*OMSIZE/8/1024/1024 << " MB\n";
         oss<<"-----------------------------------------\n";
         SLog(EDebug, oss.str().c_str());
     }

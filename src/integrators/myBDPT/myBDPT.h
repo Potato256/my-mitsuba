@@ -16,6 +16,8 @@ struct BDPTVertex{
     Float pdfInverse;
     /* The pdf of sampling this vertex's position on light */
     Float pdfLight;
+    /* Trace septh */
+    int depth;
 
     std::string toString() const {
         std::ostringstream oss;
