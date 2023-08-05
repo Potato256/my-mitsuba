@@ -14,8 +14,8 @@ def process(s):
         s[i] = sum / 3
 
 base = "./experiments/jitter/"
-s1 = "bsdf"
-s2 = "nee"
+s1 = "lvcbpt-pt-1e5"
+s2 = "mis-balance-1e5"
 f1 = s1 + '.txt'
 f2 = s2 + '.txt'
 content1 = ""
@@ -30,24 +30,29 @@ process(content1)
 process(content2)
 l1 = len(content1)
 l2 = len(content2)
+l = 0
+l = max(l, l1)
+l = max(l, l2)
 content1 = np.array(content1)
 content2 = np.array(content2)
+if l > l1:
+    content1 = np.append(content1, np.ones(l-l1) * content1[-1])
+if l > l2:
+    content2 = np.append(content2, np.ones(l-l2) * content2[-1])
 
-assert(l1==l2)
-
-x = np.arange(0, l1, 1)
+x = np.arange(0, l, 1)
 y1 = np.array(content1)
 y2 = np.array(content2)
 # y4 = np.zeros(l1)
-y11 = np.ones(l1) * y1[-1]
-y22 = np.ones(l1) * y2[-1]
+y11 = np.ones(l) * y1[-1]
+y22 = np.ones(l) * y2[-1]
 
 fig, axs = plt.subplots(1, 1)
     
-axs.plot(x, y1,  color='orange', alpha=0.75, label=s1)
-axs.plot(x, y11, color='orange', alpha=0.25)
-axs.plot(x, y2,  color='blue', alpha=0.75, label=s2)
-axs.plot(x, y22, color='blue', alpha=0.25)
+axs.plot(x, y1,  color='orange', alpha=0.75,  linewidth=0.5, label=s1)
+axs.plot(x, y11, color='orange', alpha=0.25,  linewidth=0.5)
+axs.plot(x, y2,  color='green',   alpha=0.65, linewidth=0.5, label=s2)
+axs.plot(x, y22, color='green',   alpha=0.25, linewidth=0.5)
 axs.set_xlabel('iters')
 axs.set_ylabel('color')
 # axs[0].set_ylim(0, 1)
@@ -63,7 +68,7 @@ axs.grid(True)
 fig.tight_layout()
 fig.legend()
 
-fig.savefig(base+s1+'-'+s2+'.png')
+fig.savefig(base+s1+'-'+s2+'.png', dpi=500)
 
 plt.show()
 
