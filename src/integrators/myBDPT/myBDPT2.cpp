@@ -9,6 +9,12 @@
 #include <omp.h>
 #endif
 
+#define ONLY_PT
+#define DEBUG
+
+#undef ONLY_PT
+#undef DEBUG
+
 MTS_NAMESPACE_BEGIN
 
 class myBDPT2Integrator : public Integrator
@@ -28,6 +34,7 @@ private:
     int m_blockSize;
     bool m_jitterSample;
     bool m_running;
+    bool m_drawCurve;
 
     int m_maxDepthEye;
     int m_maxDepthLight;
@@ -36,8 +43,7 @@ private:
 
     bool m_usePT;
     static int m_LiCount;
-    static Float m_lightLength;
-    static int m_lightCnt;
+    
 
     std::string m_MISmodeString;
     MISMode m_MISmode;
@@ -88,8 +94,6 @@ public:
         oss << "MISmode: " << m_MISmodeString << endl;
         oss << "usePT: " << m_usePT << endl;
         oss << "BDPTVertex size: " << sizeof(BDPTVertex) << endl;
-        oss << "lightCnt: " << m_lightCnt << endl;
-        oss << "lightLength: " << m_lightLength << endl;
         oss << "-----------------------------------------\n";
         SLog(EDebug, oss.str().c_str());
     }
@@ -164,17 +168,24 @@ public:
 
         Spectrum *target = (Spectrum *)m_bitmap->getUInt8Data();
         std::string convergeCurve = "";
+        m_drawCurve = false;
+        if (cropSize.x == 1 && cropSize.y == 1)
+            m_drawCurve = true;
 
-        for (int i = 0; i < sampleCount; ++i)
-        {
-            SLog(EInfo, "Frame: %i\n", i);
+        for (int i = 0; i < sampleCount; ++i) {
+            if (m_drawCurve){
+                if (i % 1000 == 0)
+                    SLog(EInfo, "Frame: %i\n", i);
+            }
+            else
+                SLog(EInfo, "Frame: %i\n", i);
             if (!m_running)
                 break;
             /* Trace eye subpath*/
             int blockCnt = (int)blockOfs.size();
-#if defined(MTS_OPENMP)
-#pragma omp parallel for schedule(dynamic)
-#endif
+            #if defined(MTS_OPENMP)
+                #pragma omp parallel for schedule(dynamic)
+            #endif
             for (int block = 0; block < blockCnt; ++block)
             {
                 int tid = mts_omp_get_thread_num();
@@ -182,11 +193,8 @@ public:
                 Point2i &bOfs = blockOfs[block];
                 int xBlockOfs = bOfs.x;
                 int yBlockOfs = bOfs.y;
-
-                for (int yofs = 0; yofs < m_blockSize; ++yofs)
-                {
-                    for (int xofs = 0; xofs < m_blockSize; ++xofs)
-                    {
+                for (int yofs = 0; yofs < m_blockSize; ++yofs) {
+                    for (int xofs = 0; xofs < m_blockSize; ++xofs) {
                         int xRealOfs = xBlockOfs + xofs;
                         int yRealOfs = yBlockOfs + yofs;
                         if (xRealOfs >= cropSize.x || yRealOfs >= cropSize.y)
@@ -216,20 +224,20 @@ public:
             film->setBitmap(m_bitmap);
             queue->signalRefresh(job);
 
-            if (cropSize.x == 1 && cropSize.y == 1)
+            if (m_drawCurve)
                 convergeCurve += target[0].toString() + "\n";
         }
         printInfos();
-        if (cropSize.x == 1 && cropSize.y == 1)
+        if (m_drawCurve)
         {
             std::ofstream fout;
             std::ostringstream save;
-            save << "./experiments/";
+            save << "./experiments/results/";
             if (m_jitterSample)
                 save << "jitter/";
             else
                 save << "nojitter/";
-            save << "BDPT2-1e" << round(log10(sampleCount)) << ".txt";
+            save << "bdpt-1e" << round(log10(sampleCount)) << ".txt";
             fout.open(save.str().c_str());
             fout << convergeCurve;
             fout.close();
@@ -255,10 +263,12 @@ public:
             return its.Le(-eyeRay.d);
 
         std::vector<BDPTVertex *> eyePath;
+        eyePath.reserve(10);
         /* Trace eye subpath */
         traceEyeSubpath(eyeRay, its, sampler, scene, eyePath, Li);
 
         std::vector<BDPTVertex *> lightPath;
+        lightPath.reserve(10);
         /* Trace light subpath */
         traceLightSubpath(its, sampler, scene, lightPath);
 
@@ -502,16 +512,13 @@ public:
         int eyeEnd,
         int lightEnd) const
     {
-
         int numStrategy = eyeEnd + lightEnd + 1 + m_usePT;
         if (m_MISmode == UniformHeuristic)
             return 1.0f / numStrategy;
-
 #ifdef ONLY_PT
         if (lightEnd != 0 && lightEnd != -1)
             return 0.0f;
 #endif
-
         /**
          *              p_el     p_ll
          *  e1  ->  e2  --->  l2  ->  l1
@@ -688,76 +695,8 @@ public:
         else
             return ans;
     }
-
-    Float computePathPdf(
-        std::vector<Float> pdfForward,
-        std::vector<Float> pdfInverse,
-        int curStrategy,
-        int numStrategy) const
-    {
-        Float curPdf = 1.0f;
-        for (int i = curStrategy - 1; i >= 0; --i)
-            curPdf *= pdfForward[i];
-        for (int i = curStrategy + 1; i < numStrategy; ++i)
-            curPdf *= pdfInverse[i];
-        return curPdf;
-    }
-
-    void checkEyepathPdf(int limit, std::vector<BDPTVertex *> eyePath) const
-    {
-        if (m_LiCount < limit && eyePath.size() > 1)
-        {
-            std::ostringstream oss;
-            oss << endl
-                << "Li_cnt " << m_LiCount << " eye path " << endl;
-            for (int i = 1; i < eyePath.size(); ++i)
-            {
-                oss << i << ": " << eyePath[i]->pdf - computePdfForward(eyePath[i - 1]->wi, eyePath[i - 1], eyePath[i]) << " ";
-                if (i != eyePath.size() - 1)
-                    oss << computePdfForward(normalize(eyePath[i + 1]->pos - eyePath[i]->pos),
-                                             eyePath[i], eyePath[i - 1]) -
-                               eyePath[i]->pdfInverse
-                        << endl;
-                else
-                    oss << eyePath[i]->pdfInverse << endl;
-            }
-            SLog(EDebug, oss.str().c_str());
-        }
-    }
-
-    void checkLightpathPdf(int limit, std::vector<BDPTVertex *> lightPath) const
-    {
-        if (m_LiCount < limit && lightPath.size() > 1)
-        {
-            std::ostringstream oss;
-            oss << endl
-                << "Li_cnt " << m_LiCount << " light path " << endl;
-            for (int i = int(lightPath.size() - 2); i >= 0; --i)
-            {
-                oss << i << ": ";
-                if (i != lightPath.size() - 2)
-                    oss << computePdfForward(normalize(lightPath[i + 2]->pos - lightPath[i + 1]->pos),
-                                             lightPath[i + 1], lightPath[i]) -
-                               lightPath[i]->pdf
-                        << " ";
-                else
-                    oss << lightPath[i]->pdf << " ";
-
-                if (i != 0)
-                    oss << computePdfForward(normalize(lightPath[i - 1]->pos - lightPath[i]->pos),
-                                             lightPath[i], lightPath[i + 1]) -
-                               lightPath[i]->pdfInverse
-                        << endl;
-                else
-                    oss << computePdfLightDir(lightPath[i], lightPath[i + 1]) - lightPath[i]->pdfInverse << endl;
-            }
-            SLog(EDebug, oss.str().c_str());
-        }
-    }
 };
 int myBDPT2Integrator::m_LiCount = 0;
-Float myBDPT2Integrator::m_lightLength = 0;
-int myBDPT2Integrator::m_lightCnt = 0;
 
 MTS_IMPLEMENT_CLASS_S(myBDPT2Integrator, false, Integrator)
 MTS_EXPORT_PLUGIN(myBDPT2Integrator, "myBDPT2");

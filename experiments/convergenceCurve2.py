@@ -13,8 +13,8 @@ def process(s):
             sum += float(s[i][j].strip())
         s[i] = sum / 3
 
-base = "./experiments/jitter/"
-s1 = "lvcbpt-pt-1e5"
+base = "./experiments/results/jitter/"
+s1 = "bdpt-1e5"
 s2 = "mis-balance-1e5"
 f1 = s1 + '.txt'
 f2 = s2 + '.txt'
@@ -68,7 +68,7 @@ axs.grid(True)
 fig.tight_layout()
 fig.legend()
 
-fig.savefig(base+s1+'-'+s2+'.png', dpi=500)
+fig.savefig(base+s1+'-'+s2+'.png', dpi=600)
 
 plt.show()
 
