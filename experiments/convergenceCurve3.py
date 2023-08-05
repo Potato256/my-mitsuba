@@ -71,12 +71,12 @@ y33 = np.ones(l) * y3[-1]
 
 fig, axs = plt.subplots(1, 1)
     
-axs.plot(x1, y1,  color='orange', alpha=0.75, label=s1)
-axs.plot(x1, y11, color='orange', alpha=0.25)
-axs.plot(x2, y2,  color='blue', alpha=0.65, label=s2)
-axs.plot(x2, y22, color='blue', alpha=0.25)
-axs.plot(x3, y3,  color='g', alpha=0.75, label=s3)
-axs.plot(x3, y33, color='g', alpha=0.25)
+axs.plot(x1, y1,  color='orange', alpha=0.75, linewidth=1, label=s1)
+axs.plot(x1, y11, color='orange', alpha=0.25, linewidth=1)
+axs.plot(x2, y2,  color='blue',   alpha=0.65, linewidth=1, label=s2)
+axs.plot(x2, y22, color='blue',   alpha=0.25, linewidth=1)
+axs.plot(x3, y3,  color='g',      alpha=0.75, linewidth=1, label=s3)
+axs.plot(x3, y33, color='g',      alpha=0.25, linewidth=1)
 axs.set_xlabel('iters')
 axs.set_ylabel('color')
 # axs[0].set_ylim(0, 1)
