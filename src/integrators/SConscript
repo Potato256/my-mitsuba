@@ -14,6 +14,7 @@ plugins += env.SharedLibrary('myPath2', ['myPath/myPath2.cpp'])
 
 plugins += env.SharedLibrary('testNEE', ['myPath/testNEE.cpp'])
 plugins += env.SharedLibrary('myBDPT', ['myBDPT/myBDPT.cpp'])
+plugins += env.SharedLibrary('myBDPT2', ['myBDPT/myBDPT2.cpp'])
 plugins += env.SharedLibrary('myBDPTsp', ['myBDPT/myBDPTsp.cpp'])
 plugins += env.SharedLibrary('LVCBPT', ['myBDPT/LVCBPT.cpp'])
 
