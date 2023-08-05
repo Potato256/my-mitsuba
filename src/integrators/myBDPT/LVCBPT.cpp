@@ -30,6 +30,11 @@ public:
     MTS_DECLARE_CLASS()
 
 private:    
+    enum MISMode {
+        UniformHeuristic = 0,
+        BalanceHeuristic,
+        PowerHeuristic
+    };    
     int m_maxDepthEye;
     int m_maxDepthLight;
     Float m_rrEye;
@@ -49,7 +54,12 @@ private:
     ref<Bitmap> m_bitmap;
     std::vector<Point2i> blockOfs;
     int m_blockSize;
+    bool m_jitterSample;
     bool m_running;
+    bool m_drawCurve;    
+    
+    std::string m_MISmodeString;
+    MISMode m_MISmode;
 
 public:
     /// Initialize the integrator with the specified properties
@@ -60,6 +70,7 @@ public:
         m_rrEye = props.getFloat("rrEye", 0.75);
         m_rrLight = props.getFloat("rrLight", 0.5);
         m_blockSize = props.getInteger("blockSize", 64);
+        m_jitterSample = props.getBoolean("jitterSample", true);
         m_usePT = props.getBoolean("usePT", true);
         m_LVCConnectTimes = props.getInteger("LVCConnectTimes", 10);
 
@@ -70,6 +81,17 @@ public:
 
         m_LVCVertexSize = 0;
         m_running = true;
+        m_drawCurve = false;
+
+        m_MISmodeString = props.getString("MISmode", "balance");
+        if (m_MISmodeString == "uniform")
+            m_MISmode = UniformHeuristic;
+        else if (m_MISmodeString == "balance")
+            m_MISmode = BalanceHeuristic;
+        else if (m_MISmodeString == "power")
+            m_MISmode = PowerHeuristic;
+        else
+            Log(EError, "Unknown MIS mode: %s", m_MISmodeString.c_str());
     }
     
     // Unserialize from a binary data stream
@@ -170,13 +192,20 @@ public:
 
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();        
         std::string convergeCurve = "";
+        m_drawCurve = false;
+        if (cropSize.x == 1 && cropSize.y == 1)
+            m_drawCurve = true;
 
         for (int i = 0; i < sampleCount; ++i) {
-            if (i%10 == 0)
+            if (m_drawCurve){
+                if (i % 1000 == 0)
+                    SLog(EInfo, "Frame: %i\n", i);
+            }
+            else
                 SLog(EInfo, "Frame: %i\n", i);
+
             if (!m_running) 
                 break;
-            
             /* Trace LVC */
             m_LVCVertexSize = 0;
             memset(LVCSize, 0, sizeof(int)*nCores);
@@ -211,7 +240,7 @@ public:
                 m_k = 1; 
             #endif
 
-            if (i%100 == 0)
+            if (!m_drawCurve)
                 SLog(EInfo, "k: %f\n", m_k);
 
             /* Trace eye subpath*/
@@ -236,7 +265,9 @@ public:
                         
                         if (needsApertureSample)
                             apertureSample = sampler->next2D();
-                        samplePos = sampler->next2D();
+                        samplePos = Point2(0.5, 0.5);
+                        if (m_jitterSample)
+                            samplePos = sampler->next2D();
                         
                         samplePos.y += cropOffset.y + yRealOfs;
                         samplePos.x += cropOffset.x + xRealOfs;
@@ -253,10 +284,9 @@ public:
                     }
                 }
             }
-
             film->setBitmap(m_bitmap);       
             queue->signalRefresh(job);
-            if (cropSize.x==1&&cropSize.y==1)
+            if (m_drawCurve)
                 convergeCurve += target[0].toString() + "\n"; 
         }
 
@@ -264,9 +294,18 @@ public:
         delete []tmp_LVC;
         
         printInfos();
-        if (cropSize.x==1&&cropSize.y==1){
+        if (m_drawCurve){
             std::ofstream fout;
-            fout.open(("lvcbpt.txt"));
+            std::ostringstream save;
+            save << "./experiments/";
+            if (m_jitterSample)
+                save << "jitter/";
+            else
+                save << "nojitter/";
+            save << toString();
+            save << "-1e" << round(log10(sampleCount));
+            save << "x" << m_LVCConnectTimes << ".txt";
+            fout.open(save.str().c_str());
             fout << convergeCurve;
             fout.close();
         }
@@ -681,6 +720,14 @@ public:
         }
         
     }
+
+    std::string toString() const {
+        std::ostringstream oss;
+        oss << "lvc-" << m_LVCPathSize;
+        if (!m_usePT)
+            oss << "-nopt";
+        return oss.str();
+    } 
 
     ~LVCBPTIntegrator(){
         free(m_LVC);

@@ -15,13 +15,17 @@ def process(s):
 
 base = "./experiments/jitter/"
 
-# s1 = "pt_uniform"
-# s2 = "pt_power"
-# s3 = "pt_balance"
+# s1 = "mis-uniform-1e5"
+# s2 = "mis-power-1e5"
+# s3 = "mis-balance-1e5"
 
-s1 = "bsdf-1e5"
-s2 = "nee-1e5"
-s3 = "mis-balance-1e5"
+# s1 = "bsdf-1e5"
+# s2 = "nee-1e5"
+# s3 = "mis-balance-1e5"
+
+s1 = "mis-balance-1e5"
+s2 = "lvc-10-1e5x2"
+s3 = "lvc-10-nopt-1e5x2"
 
 f1 = s1 + '.txt'
 f2 = s2 + '.txt'
@@ -71,12 +75,12 @@ y33 = np.ones(l) * y3[-1]
 
 fig, axs = plt.subplots(1, 1)
     
-axs.plot(x1, y1,  color='orange', alpha=0.75, label=s1)
-axs.plot(x1, y11, color='orange', alpha=0.25)
-axs.plot(x2, y2,  color='blue', alpha=0.65, label=s2)
-axs.plot(x2, y22, color='blue', alpha=0.25)
-axs.plot(x3, y3,  color='g', alpha=0.75, label=s3)
-axs.plot(x3, y33, color='g', alpha=0.25)
+axs.plot(x1, y1,  color='orange', alpha=0.75, linewidth=0.5, label=s1)
+axs.plot(x1, y11, color='orange', alpha=0.25, linewidth=0.5)
+axs.plot(x2, y2,  color='blue',   alpha=0.65, linewidth=0.5, label=s2)
+axs.plot(x2, y22, color='blue',   alpha=0.25, linewidth=0.5)
+axs.plot(x3, y3,  color='green',  alpha=0.75, linewidth=0.5, label=s3)
+axs.plot(x3, y33, color='green',  alpha=0.25, linewidth=0.5)
 axs.set_xlabel('iters')
 axs.set_ylabel('color')
 # axs[0].set_ylim(0, 1)
@@ -92,7 +96,7 @@ axs.grid(True)
 fig.tight_layout()
 fig.legend()
 
-fig.savefig(base+s1+'-'+s2+'-'+s3+'.png', dpi=300)
+fig.savefig(base+s1+'-'+s2+'-'+s3+'.png', dpi=600)
 
 plt.show()
 

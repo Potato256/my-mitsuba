@@ -33,6 +33,8 @@ dist
 # Dependencies
 dependencies
 
+experiments/results
+
 # Scenes
 scenes
 

@@ -32,6 +32,7 @@ private:
     int m_blockSize;
     bool m_jitterSample;
     bool m_running;
+    bool m_drawCurve;   
 
     std::string m_strategyString;
     SamplingStrategy m_strategy;
@@ -151,9 +152,17 @@ public:
 
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
         std::string convergeCurve = "";
+        m_drawCurve = false;
+        if (cropSize.x == 1 && cropSize.y == 1)
+            m_drawCurve = true;
 
         for (int i = 0; i < sampleCount; ++i) {
-            SLog(EInfo, "Frame: %i\n", i);
+            if (m_drawCurve){
+                if (i%1000==0)
+                    SLog(EInfo, "Frame: %i\n", i);
+            }
+            else
+                SLog(EInfo, "Frame: %i\n", i);
             if (!m_running) 
                 break;
             /* Trace eye subpath*/
@@ -193,19 +202,16 @@ public:
                         Spectrum L = Li(eyeRay, scene, sampler);
                         float i_ = (float) i;
                         target[ofs] = (target[ofs]*i_ + L)/(i_+1.0f);
-
-
                     }
                 }
             }
             film->setBitmap(m_bitmap);       
             queue->signalRefresh(job); 
-
-            if (cropSize.x==1&&cropSize.y==1)
+            if (m_drawCurve)
                 convergeCurve += target[0].toString() + "\n";
         }
         printInfos();
-        if (cropSize.x==1&&cropSize.y==1){
+        if (m_drawCurve){
             std::ofstream fout;
             std::ostringstream save;
             save << "./experiments/";
