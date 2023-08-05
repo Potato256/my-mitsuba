@@ -1,6 +1,8 @@
 #include <mitsuba/render/scene.h>
 #include <mitsuba/core/plugin.h>
 #include <mitsuba/render/renderqueue.h>
+#include <iostream>
+#include <fstream>
 
 #include <random>
 #include <functional>
@@ -55,8 +57,8 @@ public:
         m_LVCPathSize = props.getInteger("LVCPathSize", 10000);
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
         m_maxDepthLight = props.getInteger("maxDepthLight", 5);
-        m_rrEye = props.getFloat("rrEye", 0.6);
-        m_rrLight = props.getFloat("rrLight", 0.6);
+        m_rrEye = props.getFloat("rrEye", 0.75);
+        m_rrLight = props.getFloat("rrLight", 0.5);
         m_blockSize = props.getInteger("blockSize", 64);
         m_usePT = props.getBoolean("usePT", true);
         m_LVCConnectTimes = props.getInteger("LVCConnectTimes", 10);
@@ -166,10 +168,12 @@ public:
 
         int* LVCSize = new int[nCores];
 
-        Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
+        Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();        
+        std::string convergeCurve = "";
 
         for (int i = 0; i < sampleCount; ++i) {
-            SLog(EInfo, "Frame: %i\n", i);
+            if (i%10 == 0)
+                SLog(EInfo, "Frame: %i\n", i);
             if (!m_running) 
                 break;
             
@@ -207,7 +211,8 @@ public:
                 m_k = 1; 
             #endif
 
-            SLog(EInfo, "k: %f\n", m_k);
+            if (i%100 == 0)
+                SLog(EInfo, "k: %f\n", m_k);
 
             /* Trace eye subpath*/
             int blockCnt = (int) blockOfs.size();
@@ -250,13 +255,21 @@ public:
             }
 
             film->setBitmap(m_bitmap);       
-            queue->signalRefresh(job); 
+            queue->signalRefresh(job);
+            if (cropSize.x==1&&cropSize.y==1)
+                convergeCurve += target[0].toString() + "\n"; 
         }
 
         delete []LVCSize;
         delete []tmp_LVC;
         
         printInfos();
+        if (cropSize.x==1&&cropSize.y==1){
+            std::ofstream fout;
+            fout.open(("lvcbpt.txt"));
+            fout << convergeCurve;
+            fout.close();
+        }
         return true;
     }
 

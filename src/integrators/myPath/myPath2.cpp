@@ -1,6 +1,8 @@
 #include <mitsuba/render/scene.h>
 #include <mitsuba/core/plugin.h>
 #include <mitsuba/render/renderqueue.h>
+#include <iostream>
+#include <fstream>
 
 #if defined(MTS_OPENMP)
 # include <omp.h>
@@ -16,7 +18,11 @@ public:
         PathNEE,
         PathMIS
     };
-
+    enum MISMode {
+        UniformHeuristic = 0,
+        BalanceHeuristic,
+        PowerHeuristic
+    };
 private:    
     int m_maxDepthEye;
     Float m_rrEye;
@@ -24,7 +30,13 @@ private:
     ref<Bitmap> m_bitmap;
     std::vector<Point2i> blockOfs;
     int m_blockSize;
+    bool m_jitterSample;
     bool m_running;
+
+    std::string m_strategyString;
+    SamplingStrategy m_strategy;
+    std::string m_MISmodeString;
+    MISMode m_MISmode;
 
 public:
     /// Initialize the integrator with the specified properties
@@ -32,7 +44,28 @@ public:
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
         m_rrEye = props.getFloat("rrEye", 0.6);
         m_blockSize = props.getInteger("blockSize", 64);
-        m_running = true;
+        m_jitterSample = props.getBoolean("jitterSample", true);
+        m_running = true;    
+        
+        m_strategyString = props.getString("strategy", "mis");
+        if (m_strategyString == "bsdf")
+            m_strategy = PathBSDF;
+        else if (m_strategyString == "nee")
+            m_strategy = PathNEE;
+        else if (m_strategyString == "mis")
+            m_strategy = PathMIS;
+        else
+            Log(EError, "Unknown strategy: %s", m_strategyString.c_str());
+
+        m_MISmodeString = props.getString("MISmode", "balance");
+        if (m_MISmodeString == "uniform")
+            m_MISmode = UniformHeuristic;
+        else if (m_MISmodeString == "balance")
+            m_MISmode = BalanceHeuristic;
+        else if (m_MISmodeString == "power")
+            m_MISmode = PowerHeuristic;
+        else
+            Log(EError, "Unknown MIS mode: %s", m_MISmodeString.c_str());
     }
     
     // Unserialize from a binary data stream
@@ -117,9 +150,9 @@ public:
         m_bitmap->clear();
 
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
+        std::string convergeCurve = "";
 
         for (int i = 0; i < sampleCount; ++i) {
-            std::cout << "Frame: " << i << std::endl;
             SLog(EInfo, "Frame: %i\n", i);
             if (!m_running) 
                 break;
@@ -145,7 +178,9 @@ public:
                         
                         if (needsApertureSample)
                             apertureSample = sampler->next2D();
-                        samplePos = sampler->next2D();
+                        samplePos = Point2(0.5, 0.5);
+                        if (m_jitterSample)
+                            samplePos = sampler->next2D();
                         
                         samplePos.y += cropOffset.y + yRealOfs;
                         samplePos.x += cropOffset.x + xRealOfs;
@@ -158,19 +193,73 @@ public:
                         Spectrum L = Li(eyeRay, scene, sampler);
                         float i_ = (float) i;
                         target[ofs] = (target[ofs]*i_ + L)/(i_+1.0f);
+
+
                     }
                 }
-
             }
             film->setBitmap(m_bitmap);       
             queue->signalRefresh(job); 
+
+            if (cropSize.x==1&&cropSize.y==1)
+                convergeCurve += target[0].toString() + "\n";
         }
         printInfos();
+        if (cropSize.x==1&&cropSize.y==1){
+            std::ofstream fout;
+            std::ostringstream save;
+            save << "./experiments/";
+            if (m_jitterSample)
+                save << "jitter/";
+            else
+                save << "nojitter/";
+            switch (m_strategy)
+            {
+                case PathBSDF: save << "bsdf";                    break;
+                case PathNEE:  save << "nee" ;                    break;
+                case PathMIS:  save << "mis-" << m_MISmodeString; break;
+            }
+            save << "-1e" << round(log10(sampleCount)) << ".txt";
+            fout.open(save.str().c_str());
+            fout << convergeCurve;
+            fout.close();
+        }
         return true;
     }
 
-    inline Float mis(Float p1, Float p2) const {
-        return p1 / (p1 + p2);
+    inline Float misWeight(Float pdfBSDF, Float pdfDirect, SamplingStrategy strategy) const {
+        switch (strategy)
+        {
+        case PathBSDF:
+            switch (m_strategy)
+            {
+            case PathBSDF: return 1;
+            case PathNEE: return 0;
+            case PathMIS: return mis(pdfBSDF, pdfDirect, m_MISmode);
+            default: return 0;
+            }
+        case PathNEE:
+            switch (m_strategy)
+            {
+            case PathBSDF: return 0;
+            case PathNEE: return 1;
+            case PathMIS: return mis(pdfDirect, pdfBSDF, m_MISmode);
+            default: return 0;
+            }
+        default:
+            return 0;
+        }
+    }
+
+    #define sqr(x) ((x)*(x))
+    inline Float mis(Float p1, Float p2, MISMode mode) const {
+        switch (m_MISmode)
+        {
+        case UniformHeuristic: return 0.5;
+        case BalanceHeuristic: return p1 / (p1 + p2);
+        case PowerHeuristic: return sqr(p1) / (sqr(p1) + sqr(p2));
+        default: return 0;
+        }
     }
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
@@ -207,7 +296,7 @@ public:
                     if (!bsdfVal.isZero()) {
                         Float bsdfPdf = (emitter->isOnSurface() && dRec.measure == ESolidAngle)
                             ? bsdf->pdf(bRec) : 0;
-                        Float misW = mis(dRec.pdf, bsdfPdf);
+                        Float misW = misWeight(bsdfPdf, dRec.pdf, PathNEE);
                         Li += throughput * value * bsdfVal * misW;
                     }
                 }
@@ -234,7 +323,7 @@ public:
                     dRec.setQuery(ray, its);
                     Float lumPdf = (!(bRec.sampledType & BSDF::EDelta)) ?
                         scene->pdfEmitterDirect(dRec) : 0;
-                    Float misW = mis(bsdfPdf, lumPdf);
+                    Float misW = misWeight(bsdfPdf, lumPdf, PathBSDF);
                     Li += throughput * value * misW;
                     return Li;
                 }
