@@ -33,7 +33,7 @@ dist
 # Dependencies
 dependencies
 
-experiments\results
+experiments/results
 
 # Scenes
 scenes
