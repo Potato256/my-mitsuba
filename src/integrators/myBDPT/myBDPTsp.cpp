@@ -85,8 +85,6 @@ public:
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
             cameraResID, samplerResID);
 
-
-        
         ref<Sampler> sampler = static_cast<Sampler *> (PluginManager::getInstance()->
             createObject(MTS_CLASS(Sampler), Properties("independent")));
 

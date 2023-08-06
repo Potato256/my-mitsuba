@@ -159,10 +159,10 @@ public:
         for (int i = 0; i < sampleCount; ++i) {
             if (m_drawCurve){
                 if (i%1000==0)
-                    SLog(EInfo, "Frame: %i\n", i);
+                    SLog(EInfo, "Frame: %i", i);
             }
             else
-                SLog(EInfo, "Frame: %i\n", i);
+                SLog(EInfo, "Frame: %i", i);
             if (!m_running) 
                 break;
             /* Trace eye subpath*/
@@ -214,21 +214,21 @@ public:
         if (m_drawCurve){
             std::ofstream fout;
             std::ostringstream save;
-            save << "./experiments/";
-            if (m_jitterSample)
-                save << "jitter/";
-            else
-                save << "nojitter/";
+            save << "./experiments/results/";
+            save << (m_jitterSample ? "jitter/" : "nojitter/");
             switch (m_strategy)
             {
                 case PathBSDF: save << "bsdf";                    break;
                 case PathNEE:  save << "nee" ;                    break;
                 case PathMIS:  save << "mis-" << m_MISmodeString; break;
             }
-            save << "-1e" << round(log10(sampleCount)) << ".txt";
+            float e = round(log10(sampleCount));
+            save << "-" << round(sampleCount/pow(10,e));
+            save << "e" << round(log10(sampleCount)) << ".txt";
             fout.open(save.str().c_str());
             fout << convergeCurve;
             fout.close();
+            SLog(EInfo, "Saving result to %s", save.str().c_str());
         }
         return true;
     }

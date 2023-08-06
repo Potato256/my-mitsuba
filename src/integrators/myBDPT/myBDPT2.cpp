@@ -42,8 +42,8 @@ private:
     Float m_rrLight;
 
     bool m_usePT;
+    bool m_sp;
     static int m_LiCount;
-    
 
     std::string m_MISmodeString;
     MISMode m_MISmode;
@@ -61,6 +61,7 @@ public:
         m_rrEye = props.getFloat("rrEye", 0.6);
         m_rrLight = props.getFloat("rrLight", 0.6);
         m_usePT = props.getBoolean("usePT", true);
+        m_sp = props.getBoolean("sp", false);
 
         m_MISmodeString = props.getString("MISmode", "balance");
         if (m_MISmodeString == "uniform")
@@ -175,10 +176,10 @@ public:
         for (int i = 0; i < sampleCount; ++i) {
             if (m_drawCurve){
                 if (i % 1000 == 0)
-                    SLog(EInfo, "Frame: %i\n", i);
+                    SLog(EInfo, "Frame: %i", i);
             }
             else
-                SLog(EInfo, "Frame: %i\n", i);
+                SLog(EInfo, "Frame: %i", i);
             if (!m_running)
                 break;
             /* Trace eye subpath*/
@@ -216,7 +217,7 @@ public:
 
                         int ofs = yRealOfs * cropSize.x + xRealOfs;
                         Spectrum L = Li(eyeRay, scene, sampler);
-                        float i_ = (float)i;
+                        Float i_ = (double)i;
                         target[ofs] = (target[ofs] * i_ + L) / (i_ + 1.0f);
                     }
                 }
@@ -233,14 +234,14 @@ public:
             std::ofstream fout;
             std::ostringstream save;
             save << "./experiments/results/";
-            if (m_jitterSample)
-                save << "jitter/";
-            else
-                save << "nojitter/";
-            save << "bdpt-1e" << round(log10(sampleCount)) << ".txt";
+            save << (m_jitterSample ? "jitter/" : "nojitter/");
+            save << "bdpt";
+            save << (m_sp ? "sp" : "");
+            save<<"-1e" << round(log10(sampleCount)) << ".txt";
             fout.open(save.str().c_str());
             fout << convergeCurve;
             fout.close();
+            SLog(EInfo, "Saving result to %s", save.str().c_str());
         }
         return true;
     }
@@ -263,12 +264,10 @@ public:
             return its.Le(-eyeRay.d);
 
         std::vector<BDPTVertex *> eyePath;
-        eyePath.reserve(10);
         /* Trace eye subpath */
         traceEyeSubpath(eyeRay, its, sampler, scene, eyePath, Li);
 
         std::vector<BDPTVertex *> lightPath;
-        lightPath.reserve(10);
         /* Trace light subpath */
         traceLightSubpath(its, sampler, scene, lightPath);
 
@@ -484,27 +483,29 @@ public:
     {
         if (eyePath.size() == 0 || lightPath.size() == 0)
             return;
-        for (int i = 0; i < eyePath.size(); ++i)
-        {
-            for (int j = 0; j < lightPath.size(); ++j)
-            {
-                BDPTVertex *eyeEnd = eyePath[i];
-                BDPTVertex *lightEnd = lightPath[j];
+        if (!m_sp) {
+            for (int i = 0; i < eyePath.size(); ++i) {
+                for (int j = 0; j < lightPath.size(); ++j) {
+                   BDPTVertex *eyeEnd = eyePath[i];
+                   BDPTVertex *lightEnd = lightPath[j];
+                   Spectrum value;
+                   if (evalContri(eyeEnd, lightEnd, scene, value))
+                       Li += value * MISweight(eyePath, lightPath, i, j);
+                }
+            }
+        } else {
+            int lSize = lightPath.size();
+            for (int i = 0; i < eyePath.size(); ++i) {
+                int choice = rand() % lSize;
+                BDPTVertex* eyeEnd = eyePath[i];
+                BDPTVertex* lightEnd = lightPath[choice];
                 Spectrum value;
-                if (evalContri(eyeEnd, lightEnd, scene, value))
-                    Li += value * MISweight(eyePath, lightPath, i, j);
+                if(evalContri(eyeEnd, lightEnd, scene, value))
+                    Li += value * MISweight(eyePath, lightPath, i, choice) * lSize;
             }
         }
 
-        // int lSize = lightPath.size();
-        // for (int i = 0; i < eyePath.size(); ++i) {
-        //     int choice = rand() % lSize;
-        //         BDPTVertex* eyeEnd = eyePath[i];
-        //         BDPTVertex* lightEnd = lightPath[choice];
-        //         Spectrum value;
-        //         if(evalContri(eyeEnd, lightEnd, scene, value))
-        //             Li += value * MISweight(eyePath, lightPath, i, choice) * lSize;
-        // }
+        
     }
     Float MISweight(
         std::vector<BDPTVertex *> eyePath,

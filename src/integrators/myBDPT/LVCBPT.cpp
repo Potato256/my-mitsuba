@@ -16,11 +16,13 @@
 #define ONLY_PT
 #define ONLY_NEE
 #define ONLY_BSDF
+#define ONLY_BDPT
 #define DEBUG
 
 #undef ONLY_PT
 #undef ONLY_NEE
 #undef ONLY_BSDF
+#undef ONLY_BDPT
 #undef DEBUG
 
 MTS_NAMESPACE_BEGIN
@@ -199,10 +201,10 @@ public:
         for (int i = 0; i < sampleCount; ++i) {
             if (m_drawCurve){
                 if (i % 1000 == 0)
-                    SLog(EInfo, "Frame: %i\n", i);
+                    SLog(EInfo, "Frame: %i", i);
             }
             else
-                SLog(EInfo, "Frame: %i\n", i);
+                SLog(EInfo, "Frame: %i", i);
 
             if (!m_running) 
                 break;
@@ -210,6 +212,7 @@ public:
             m_LVCVertexSize = 0;
             memset(LVCSize, 0, sizeof(int)*nCores);
             #if defined(MTS_OPENMP)
+            if (m_LVCPathSize >= nCores) {
                 #pragma omp parallel
                 {   
                     int tid = mts_omp_get_thread_num();
@@ -230,18 +233,22 @@ public:
                             sizeof(BDPTVertex) * LVCSize[tid]); 
                     }
                 }
+            } else { 
+                for (int i = 0; i < m_LVCPathSize; ++i)
+                    traceLightSubpath(sampler, scene, m_LVC, m_LVCVertexSize);
+            }
             #else
                 for (int i = 0; i < m_LVCPathSize; ++i)
                     traceLightSubpath(sampler, scene, m_LVC, m_LVCVertexSize);
             #endif
             
             m_k = float(m_LVCVertexSize) / float(m_LVCPathSize);
-            #if defined(ONLY_PT) || defined(ONLY_NEE)
+            #if defined(ONLY_NEE) || defined(ONLY_PT)
                 m_k = 1; 
             #endif
 
             if (!m_drawCurve)
-                SLog(EInfo, "k: %f\n", m_k);
+                SLog(EInfo, "k: %f", m_k);
 
             /* Trace eye subpath*/
             int blockCnt = (int) blockOfs.size();
@@ -297,17 +304,17 @@ public:
         if (m_drawCurve){
             std::ofstream fout;
             std::ostringstream save;
-            save << "./experiments/";
-            if (m_jitterSample)
-                save << "jitter/";
-            else
-                save << "nojitter/";
+            save << "./experiments/results/";
+            save << (m_jitterSample ? "jitter/" : "nojitter/");
             save << toString();
-            save << "-1e" << round(log10(sampleCount));
+            float e = round(log10(sampleCount));
+            save << "-" << round(sampleCount/pow(10,e));
+            save << "e" << round(log10(sampleCount));
             save << "x" << m_LVCConnectTimes << ".txt";
             fout.open(save.str().c_str());
             fout << convergeCurve;
             fout.close();
+            SLog(EInfo, "Saving result to %s", save.str().c_str());
         }
         return true;
     }
@@ -544,10 +551,6 @@ public:
             lStart = lightEnd - lDepth;
         }
         int numStrategy = eyeEnd + lDepth + 1 + m_usePT;  
-        // std::cout << numStrategy << " ";
-
-        // std::cout<<"mis begin, lightEnd="<<lightEnd;
-        // std::cout<<", lightDepth="<<lDepth<<", eyeEnd="<<eyeEnd<<std::endl;
         
 #ifdef ONLT_PT
         if (lDepth != 0 && lDepth != -1)
@@ -581,7 +584,7 @@ public:
             p_le = computePdfLightDir(l, e);
             pdfForward.push_back(p_el);
             pdfInverse.push_back(p_le);
-            pdfInverse.push_back(m_LVC[lightEnd].pdfLight);
+            pdfInverse.push_back(m_LVC[lStart].pdfLight);
         }
         else if (eyeEnd == 0) {
             /* One eye vertex */
@@ -602,7 +605,7 @@ public:
                 pdfForward.push_back(m_LVC[i].pdf);
                 pdfInverse.push_back(m_LVC[i].pdfInverse);
             }
-            pdfInverse.push_back(m_LVC[lightEnd].pdfLight);
+            pdfInverse.push_back(m_LVC[lStart].pdfLight);
         }
         else if (lDepth == 0) {
             /* One light vertex */
@@ -623,7 +626,7 @@ public:
             pdfInverse.push_back(p_ee);
             pdfForward.push_back(p_el);
             pdfInverse.push_back(p_le);
-            pdfInverse.push_back(m_LVC[lightEnd].pdfLight);
+            pdfInverse.push_back(m_LVC[lStart].pdfLight);
         }
         else {
             /* Other case */
@@ -652,7 +655,7 @@ public:
                 pdfForward.push_back(m_LVC[i].pdf);
                 pdfInverse.push_back(m_LVC[i].pdfInverse);
             }
-            pdfInverse.push_back(m_LVC[lightEnd].pdfLight);
+            pdfInverse.push_back(m_LVC[lStart].pdfLight);
         }
 
         int curStrategy = eyeEnd;
@@ -705,9 +708,27 @@ public:
         Spectrum& Li
     ) const {
         for (int i = 0; i < m_LVCConnectTimes; ++i) {
+        #if defined(ONLY_BDPT)
+            for (int j = 0; j < eyePath.size(); ++j) {
+                for (int choice = 0; choice < m_LVCVertexSize; ++choice) {
+                    BDPTVertex* eyeEnd = eyePath[j];
+                    BDPTVertex* lightEnd = &m_LVC[choice];
+                    Spectrum value;
+                    if(evalContri(eyeEnd, lightEnd, scene, value)) {
+                        Li += value * MISweight(eyePath, j, choice)
+                            / float(m_LVCConnectTimes);
+                    }
+                }
+            }
+        }
+        #else
             int choice = int(sampler->next1D() * m_LVCVertexSize);
+            // int choice = rand() % m_LVCVertexSize;
             // std::cout<<m_LVCVertexSize<<" "<<choice<<endl;
-            // int choice = int(rand() % m_LVCVertexSize);
+            // std::cout<<"size"<<m_LVCVertexSize<<" choice"<<choice<<"\n";
+            #if defined(ONLY_NEE) || defined(ONLY_PT)
+                choice = 0; 
+            #endif
             for (int j = 0; j < eyePath.size(); ++j) {
                 BDPTVertex* eyeEnd = eyePath[j];
                 BDPTVertex* lightEnd = &m_LVC[choice];
@@ -718,12 +739,15 @@ public:
                 }
             }
         }
-        
+        #endif
     }
 
     std::string toString() const {
         std::ostringstream oss;
-        oss << "lvc-" << m_LVCPathSize;
+        oss << "lvc-" << m_LVCPathSize<<"x"<<m_maxDepthLight;
+        #if defined(ONLY_BDPT)
+            oss << "-bdpt";
+        #endif
         if (!m_usePT)
             oss << "-nopt";
         return oss.str();

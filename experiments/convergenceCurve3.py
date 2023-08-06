@@ -13,19 +13,25 @@ def process(s):
             sum += float(s[i][j].strip())
         s[i] = sum / 3
 
-base = "./experiments/jitter/"
+base = "./experiments/results/jitter/cbox/"
+limit = 1000000
 
 # s1 = "mis-uniform-1e5"
 # s2 = "mis-power-1e5"
 # s3 = "mis-balance-1e5"
 
-# s1 = "bsdf-1e5"
-# s2 = "nee-1e5"
-# s3 = "mis-balance-1e5"
+# s1 = "bsdf-1e6"
+# s2 = "nee-1e6"
+# s3 = "mis-balance-1e6"
 
-s1 = "mis-balance-1e5"
-s2 = "lvc-10-1e5x2"
-s3 = "lvc-10-nopt-1e5x2"
+# s1 = "mis-balance-2e6-float"
+# s2 = "mis-balance-2e6-double"
+# s3 = "bdpt-1e6-float"
+# s3 = "lvc-1x10-1e6x1"
+
+s1 = "mis-balance-2e6-double"
+s2 = "bdpt-1e6-double"
+s3 = "lvc-100x10-1e6x2"
 
 f1 = s1 + '.txt'
 f2 = s2 + '.txt'
@@ -51,6 +57,7 @@ l = 0
 l = max(l, l1)
 l = max(l, l2)
 l = max(l, l3)
+l = min(l, limit)
 
 content1 = np.array(content1)
 content2 = np.array(content2)
@@ -58,10 +65,16 @@ content3 = np.array(content3)
 
 if l > l1:
     content1 = np.append(content1, np.ones(l-l1) * content1[-1])
+elif l < l1:
+    content1 = content1[:l]
 if l > l2:
     content2 = np.append(content2, np.ones(l-l2) * content2[-1])
+elif l < l2:
+    content2 = content2[:l]
 if l > l3:
     content3 = np.append(content3, np.ones(l-l3) * content3[-1])
+elif l < l3:
+    content3 = content3[:l]
 
 x1 = np.arange(0, l, 1)
 x2 = np.arange(0, l, 1)
@@ -96,7 +109,7 @@ axs.grid(True)
 fig.tight_layout()
 fig.legend()
 
-fig.savefig(base+s1+'-'+s2+'-'+s3+'.png', dpi=600)
+fig.savefig(base+s1+'_'+s2+'_'+s3+'.png', dpi=600)
 
 plt.show()
 
