@@ -15,6 +15,11 @@
 #undef ONLY_PT
 #undef DEBUG
 
+#define LIGHT_TRACE
+#ifdef LIGHT_TRACE
+    #define LIGHT_TRACE_NUM 1000
+#endif
+
 MTS_NAMESPACE_BEGIN
 
 class myBDPT2Integrator : public Integrator

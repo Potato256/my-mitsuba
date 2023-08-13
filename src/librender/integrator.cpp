@@ -123,7 +123,7 @@ bool SamplingIntegrator::render(Scene *scene,
     scene->bindUsedResources(proc);
     bindUsedResources(proc);
     sched->schedule(proc);
-
+    
     m_process = proc;
     sched->wait(proc);
     m_process = NULL;

@@ -6,7 +6,7 @@ MTS_NAMESPACE_BEGIN
 
 #define OMSIZE 128
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 32
+#define OMNUMSQRT 16
 #define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 #define MASK_h27b 0xffffffe0
@@ -341,8 +341,6 @@ public:
         Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
         Float x1 = (o1_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
         Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
-        // Float x2 = (o2_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
-        // Float y2 = (o2_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
         int x = (int)floor(x1);
         int y = (int)floor(y1);
 
@@ -371,33 +369,23 @@ public:
             z2 = 0;
         else if (z2 >= omSize)
             z2 = omSize - 1;
-        int p1 = z1 / 32;
-        int p2 = z2 / 32;
-        int r1 = z1 % 32;
-        int r2 = 31 - z2 % 32;
+        int p1 = z1 >> 5;
+        int p2 = z2 >> 5;
+        int r1 = z1 & MASK_l5b;
+        int r2 = 31 - z2 & MASK_l5b;
         if (p1 == p2)
         {
             return ((bom[x][y][p1] >> r1) << (r1 + r2)) == 0;
         }
         else
         {
-            // Float dx = (x2 - x1) / (p2 - p1);
-            // Float dy = (y2 - y1) / (p2 - p1);
             if (bom[x][y][p1] >> r1 != 0)
                 return false;
             for (int i = p1 + 1; i < p2; i++)
             {
-                // x1 += dx;
-                // y1 += dy;
-                // x = (int)floor(x1);
-                // y = (int)floor(y1);
                 if (bom[x][y][i] != 0)
                     return false;
             }
-            // x1 += dx;
-            // y1 += dy;
-            // x = (int)floor(x1);
-            // y = (int)floor(y1);
             if (bom[x][y][p2] << r2 != 0)
                 return false;
         }

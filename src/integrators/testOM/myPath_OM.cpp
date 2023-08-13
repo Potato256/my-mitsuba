@@ -65,21 +65,12 @@ public:
         SamplingIntegrator::serialize(stream, manager);
     }
 
-    void generateROMA(Sampler* sampler) {
-        for (int i = 0; i < OMNUMSQRT; i++)
-            for (int j = 0; j < OMNUMSQRT; j++) {
-                roma[i * OMNUMSQRT + j].clear();
-                roma[i * OMNUMSQRT + j].setAABB(m_baseAABB);
-                Point2 uv = sampler->next2D();
-                m_om.generateROMA(&roma[i * OMNUMSQRT + j], Point2((i + uv.x) / OMNUMSQRT, (j + uv.y) / OMNUMSQRT));
-            }
-    }
-
     /// Preprocess function -- called on the initiating machine
     bool preprocess(const Scene *scene, RenderQueue *queue,
                     const RenderJob *job, int sceneResID, int cameraResID,
                     int samplerResID)
     {
+        SLog(EInfo, "Preprocessing scene...");
         SamplingIntegrator::preprocess(scene, queue, job, sceneResID,
                                        cameraResID, samplerResID);
 
@@ -281,7 +272,7 @@ public:
         oss<<"\n--------- PATH-OM Info Print ----------\n";
         oss<<"ROMA size = " <<1.0f*OMNUM*OMSIZE*OMSIZE*OMSIZE/8/1024/1024 << " MB\n";
         oss<<"-----------------------------------------\n";
-        SLog(EDebug, oss.str().c_str());
+        SLog(EInfo, oss.str().c_str());
     }
 };
 
