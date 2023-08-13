@@ -156,6 +156,11 @@ public:
         m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
         m_bitmap->clear();
 
+        float* cTimes = new float[nCores];
+        float* cNums = new float[nCores];
+        memset(cTimes, 0, nCores*sizeof(int));
+        memset(cNums, 0, nCores*sizeof(int));
+
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
         std::string convergeCurve = "";
         m_drawCurve = false;
@@ -183,6 +188,9 @@ public:
                 int xBlockOfs = bOfs.x;
                 int yBlockOfs = bOfs.y;
 
+                cNums[tid] = 0.0f;
+                cTimes[tid] = 0.0f;
+                
                 for (int yofs=0; yofs<m_blockSize; ++yofs) {
                     for (int xofs=0; xofs<m_blockSize; ++xofs) {
                         int xRealOfs = xBlockOfs + xofs;
@@ -205,10 +213,15 @@ public:
                             eyeRay, samplePos, apertureSample, 0.0f);   
                         
                         int ofs = yRealOfs*cropSize.x+xRealOfs;
-                        Spectrum L = Li(eyeRay, scene, sampler);
+                        Spectrum L = Li(eyeRay, scene, sampler, &cTimes[tid], &cNums[tid]);
                         float i_ = (float) i;
                         target[ofs] = (target[ofs]*i_ + L)/(i_+1.0f);
                     }
+                }
+                #pragma omp critical
+                {
+                    m_connectNum += cNums[tid];
+                    m_connectTime += cTimes[tid];
                 }
             }
             film->setBitmap(m_bitmap);       
@@ -236,6 +249,10 @@ public:
             fout.close();
             SLog(EInfo, "Saving result to %s", save.str().c_str());
         }
+
+        delete[] cTimes;
+        delete[] cNums;
+
         return true;
     }
 
@@ -275,7 +292,7 @@ public:
     }
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
-    Spectrum Li(const RayDifferential &r, Scene* scene, Sampler* sampler) {
+    Spectrum Li(const RayDifferential &r, Scene* scene, Sampler* sampler, float* cTime, float* cNum) {
         /* Some aliases and local variables */
         Intersection its;
         RayDifferential ray(r);
@@ -301,8 +318,8 @@ public:
                 clock_t start = clock();
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D());
                 clock_t end = clock();
-                m_connectTime += (end-start);
-                m_connectNum += 1;
+                *cTime += (end-start);
+                *cNum += 1;
                 if (!value.isZero()) {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
 

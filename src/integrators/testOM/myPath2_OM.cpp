@@ -211,6 +211,11 @@ public:
         m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
         m_bitmap->clear();
 
+        float *cTimes = new float[nCores];
+        float *cNums = new float[nCores];
+        memset(cTimes, 0, nCores * sizeof(int));
+        memset(cNums, 0, nCores * sizeof(int));
+
         Spectrum *target = (Spectrum *)m_bitmap->getUInt8Data();
         std::string convergeCurve = "";
         m_drawCurve = false;
@@ -230,9 +235,9 @@ public:
                 break;
             /* Trace eye subpath*/
             int blockCnt = (int)blockOfs.size();
-#if defined(MTS_OPENMP)
-#pragma omp parallel for schedule(dynamic)
-#endif
+            #if defined(MTS_OPENMP)
+            #pragma omp parallel for schedule(dynamic)
+            #endif
             for (int block = 0; block < blockCnt; ++block)
             {
                 int tid = mts_omp_get_thread_num();
@@ -240,6 +245,8 @@ public:
                 Point2i &bOfs = blockOfs[block];
                 int xBlockOfs = bOfs.x;
                 int yBlockOfs = bOfs.y;
+                cNums[tid] = 0.0f;
+                cTimes[tid] = 0.0f;
 
                 for (int yofs = 0; yofs < m_blockSize; ++yofs)
                 {
@@ -265,10 +272,15 @@ public:
                             eyeRay, samplePos, apertureSample, 0.0f);
 
                         int ofs = yRealOfs * cropSize.x + xRealOfs;
-                        Spectrum L = Li(eyeRay, scene, sampler);
+                        Spectrum L = Li(eyeRay, scene, sampler, &cTimes[tid], &cNums[tid]);
                         float i_ = (float)i;
                         target[ofs] = (target[ofs] * i_ + L) / (i_ + 1.0f);
                     }
+                }
+                #pragma omp critical
+                {
+                    m_connectNum += cNums[tid];
+                    m_connectTime += cTimes[tid];
                 }
             }
             film->setBitmap(m_bitmap);
@@ -303,6 +315,8 @@ public:
             fout.close();
             SLog(EInfo, "Saving result to %s", save.str().c_str());
         }
+        delete[] cTimes;
+        delete[] cNums;
         return true;
     }
 
@@ -356,7 +370,7 @@ public:
     }
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
-    Spectrum Li(const RayDifferential &r, Scene *scene, Sampler *sampler)
+    Spectrum Li(const RayDifferential &r, Scene *scene, Sampler *sampler, float *cTime, float *cNum)
     {
         /* Some aliases and local variables */
         Intersection its;
@@ -392,8 +406,8 @@ public:
                 bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 clock_t end = clock();
-                m_connectTime += (end - start);
-                m_connectNum ++;
+                *cTime += (end - start);
+                *cNum += 1.0f;
                 if (vis && !value.isZero())
                 {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
