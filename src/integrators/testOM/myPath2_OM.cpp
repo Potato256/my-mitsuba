@@ -47,7 +47,7 @@ private:
 
     AABB m_baseAABB;
     OM m_om;
-    OM roma[OMNUM];
+    OM* roma;
 
     Float m_connectNum = 0;
     Float m_connectTime = 0;
@@ -157,6 +157,7 @@ public:
         m_om.setScene(scene);
 
         /* init roma */
+        roma = new OM[OMNUM];
         for (int i = 0; i < OMNUMSQRT; i++)
             for (int j = 0; j < OMNUMSQRT; j++)
             {
@@ -235,9 +236,9 @@ public:
                 break;
             /* Trace eye subpath*/
             int blockCnt = (int)blockOfs.size();
-            #if defined(MTS_OPENMP)
-            #pragma omp parallel for schedule(dynamic)
-            #endif
+#if defined(MTS_OPENMP)
+#pragma omp parallel for schedule(dynamic)
+#endif
             for (int block = 0; block < blockCnt; ++block)
             {
                 int tid = mts_omp_get_thread_num();
@@ -277,7 +278,7 @@ public:
                         target[ofs] = (target[ofs] * i_ + L) / (i_ + 1.0f);
                     }
                 }
-                #pragma omp critical
+#pragma omp critical
                 {
                     m_connectNum += cNums[tid];
                     m_connectTime += cTimes[tid];
@@ -317,6 +318,7 @@ public:
         }
         delete[] cTimes;
         delete[] cNums;
+        delete[] roma;
         return true;
     }
 
@@ -396,18 +398,17 @@ public:
 
             if (bsdf->getType() & BSDF::ESmooth)
             {
-
+                clock_t start = clock();
                 int id = OM::nearestOMindex(dRec.d);
                 if (id < 0 || id >= OMNUM)
                 {
                     SLog(EError, "id error: %d\n", id);
                 }
-                clock_t start = clock();
                 bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
-                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 clock_t end = clock();
                 *cTime += (end - start);
                 *cNum += 1.0f;
+                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 if (vis && !value.isZero())
                 {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);

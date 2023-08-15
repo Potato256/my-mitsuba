@@ -315,10 +315,7 @@ public:
             DirectSamplingRecord dRec(its);
 
             if (bsdf->getType() & BSDF::ESmooth) {
-                clock_t start = clock();
-                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D());
-                clock_t end = clock();
-                *cTime += (end-start);
+                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(),true,cTime);
                 *cNum += 1;
                 if (!value.isZero()) {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);

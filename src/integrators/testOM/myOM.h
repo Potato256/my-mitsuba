@@ -4,9 +4,9 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 128
+#define OMSIZE 256
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 16
+#define OMNUMSQRT 32
 #define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 #define MASK_h27b 0xffffffe0
