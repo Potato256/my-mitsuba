@@ -4,9 +4,9 @@
 
 MTS_NAMESPACE_BEGIN
 
-#define OMSIZE 256
+#define OMSIZE 128
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 32
+#define OMNUMSQRT 16
 #define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 #define MASK_h27b 0xffffffe0
@@ -23,66 +23,79 @@ private:
     Float m_gridSize;
     Float m_gridSizeRecp;
     Quaternion m_q;
+    Transform m_rotate;
     Vector3 m_center;
 
 public:
     OccupancyMap() {}
 
-    inline void clear() {
+    inline void clear()
+    {
         memset(bom, 0, sizeof(bom));
     }
 
-    inline void setAABB(const AABB &aabb) {
+    inline void setAABB(const AABB &aabb)
+    {
         m_AABB = aabb;
-        m_center = Vector(m_AABB.min + (m_AABB.max - m_AABB.min) / 2);
+        m_center = Vector3(m_AABB.min + (m_AABB.max - m_AABB.min) / 2);
         Float d = m_AABB.max.x - m_AABB.min.x;
         m_size = d;
         m_gridSize = m_size / omSize;
         m_gridSizeRecp = 1 / m_gridSize;
     }
 
-    inline void setSize(const Float d) {
+    inline void setSize(const Float d)
+    {
         m_size = d;
         m_gridSize = m_size / omSize;
         m_gridSizeRecp = 1 / m_gridSize;
     }
 
-    inline void set(int x, int y, int z) {
+    inline void set(int x, int y, int z)
+    {
         bom[x][y][z >> 5] |= 1 << (z & MASK_l5b);
     }
 
-    inline void set(Point3i p) {
+    inline void set(Point3i p)
+    {
         set(p.x, p.y, p.z);
     }
 
-    inline void setArray(int *array, int x, int y, int z) {
+    inline void setArray(int *array, int x, int y, int z)
+    {
         array[(z >> 5) & MASK_l27b] |= 1 << (z & MASK_l5b);
     }
 
-    inline bool check(int x, int y, int z) const {
+    inline bool check(int x, int y, int z) const
+    {
         return x >= 0 && x < omSize && y >= 0 && y < omSize && z >= 0 && z < omSize;
     }
 
-    inline bool check(Point3i p) const {
+    inline bool check(Point3i p) const
+    {
         return check(p.x, p.y, p.z);
     }
 
-    inline bool get(int x, int y, int z) const {
+    inline bool get(int x, int y, int z) const
+    {
         return bom[x][y][z >> 5] & (1 << (z & MASK_l5b));
     }
 
-    inline bool get(Point3i p) const {
+    inline bool get(Point3i p) const
+    {
         return get(p.x, p.y, p.z);
     }
 
-    inline bool anyHit(int x, int y) const {
+    inline bool anyHit(int x, int y) const
+    {
         for (int i = 0; i < omDepth; i++)
             if (bom[x][y][i])
                 return true;
         return false;
     }
 
-    inline bool closestHit(int U, Float z, Float &id) {
+    inline bool closestHit(int U, Float z, Float &id)
+    {
         if (U > 0)
         {
             if (z > 0)
@@ -98,13 +111,15 @@ public:
         return false;
     }
 
-    inline void setScene(const Scene *scene) {
+    inline void setScene(const Scene *scene)
+    {
         auto meshes = scene->getMeshes();
         for (auto m : meshes)
             setMesh(m);
     }
 
-    inline void setMesh(const TriMesh *mesh) {
+    inline void setMesh(const TriMesh *mesh)
+    {
         const Triangle *tri = mesh->getTriangles();
         const Point3 *pos = mesh->getVertexPositions();
         int triCnt = (int)mesh->getTriangleCount();
@@ -119,7 +134,8 @@ public:
         return;
     }
 
-    void setTriangle(Point3 &p0, Point3 &p1, Point3 &p2, int depth = 0) {
+    void setTriangle(Point3 &p0, Point3 &p1, Point3 &p2, int depth = 0)
+    {
         Point3i p0i, p1i, p2i;
         getGridIndexf2i(p0, p0i);
         getGridIndexf2i(p1, p1i);
@@ -141,43 +157,50 @@ public:
         return;
     }
 
-    inline bool closeEnough(Point3i &p1, Point3i &p2, Point3i &p3) const {
+    inline bool closeEnough(Point3i &p1, Point3i &p2, Point3i &p3) const
+    {
         Vector3i v12 = p2 - p1;
         Vector3i v23 = p3 - p2;
         Vector3i v31 = p1 - p3;
         return length(v12) + length(v23) + length(v31) <= 4;
     }
 
-    inline int length(Vector3i &v) const {
+    inline int length(Vector3i &v) const
+    {
         return abs(v.x) + abs(v.y) + abs(v.z);
     }
 
-    inline void getGridIndexf(const Point3 &p, Point3 &p1) const {
+    inline void getGridIndexf(const Point3 &p, Point3 &p1) const
+    {
         p1.x = (p.x - m_AABB.min.x) * m_gridSizeRecp;
         p1.y = (p.y - m_AABB.min.y) * m_gridSizeRecp;
         p1.z = (p.z - m_AABB.min.z) * m_gridSizeRecp;
     }
 
-    inline void getGridDirf(const Vector3 &d, Vector3 &d1) const {
+    inline void getGridDirf(const Vector3 &d, Vector3 &d1) const
+    {
         d1.x = d.x * m_gridSizeRecp;
         d1.y = d.y * m_gridSizeRecp;
         d1.z = d.z * m_gridSizeRecp;
     }
 
-    inline void getGridIndexf2i(const Point3 &p, Point3i &pi) const {
+    inline void getGridIndexf2i(const Point3 &p, Point3i &pi) const
+    {
         /* Assumes x,y,z > 0 */
         pi.x = (int)(p.x);
         pi.y = (int)(p.y);
         pi.z = (int)(p.z);
     }
 
-    inline void getGridIndexi(const Point &p, Point3i &pi) const {
+    inline void getGridIndexi(const Point &p, Point3i &pi) const
+    {
         pi.x = (int)floor((p.x - m_AABB.min.x) * m_gridSizeRecp);
         pi.y = (int)floor((p.y - m_AABB.min.y) * m_gridSizeRecp);
         pi.z = (int)floor((p.z - m_AABB.min.z) * m_gridSizeRecp);
     }
 
-    bool rayInAABB(const Ray &ray, Float &nearT) const {
+    bool rayInAABB(const Ray &ray, Float &nearT) const
+    {
         if (ray.o.x > m_AABB.min.x && ray.o.x < m_AABB.max.x &&
             ray.o.y > m_AABB.min.y && ray.o.y < m_AABB.max.y &&
             ray.o.z > m_AABB.min.z && ray.o.z < m_AABB.max.z)
@@ -188,7 +211,8 @@ public:
         return false;
     }
 
-    bool rayIntersect(const Ray &ray, Float &nearT) const {
+    bool rayIntersect(const Ray &ray, Float &nearT) const
+    {
         Float farT;
         if (rayInAABB(ray, nearT) || m_AABB.rayIntersect(ray, nearT, farT))
         {
@@ -247,7 +271,8 @@ public:
         return false;
     }
 
-    inline Float marchOneCube(const Point3 &p, const Vector3 &d) const {
+    inline Float marchOneCube(const Point3 &p, const Vector3 &d) const
+    {
         Point3 p1;
         Point3i pi;
         Vector3 d1;
@@ -266,9 +291,12 @@ public:
         return t;
     }
 
-    bool visibilityBOM(const Point3 &o1, const Point3 &o2) const {
-        Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
-        Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+    bool visibilityBOM(const Point3 &o1, const Point3 &o2) const
+    {
+        // Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
+        // Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+        Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
+        Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
         Point3 p1 = Point3(o1_aligned);
         Point3 p2 = Point3(o2_aligned);
         Vector3 d = p2 - p1;
@@ -320,10 +348,12 @@ public:
         //     return true;
     }
 
-    bool Trace(const Ray &ray, Float &nearT) const {
-        Vector3 o_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.o - m_center), 0) * m_q).v + m_center;
-        Vector3 d_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.d), 0) * m_q).v;
-
+    bool Trace(const Ray &ray, Float &nearT) const
+    {
+        // Vector3 o_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.o - m_center), 0) * m_q).v + m_center;
+        // Vector3 d_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.d), 0) * m_q).v;
+        Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
+        Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
         int x = (int)floor((o_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon);
         int y = (int)floor((o_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon);
         int z = (int)floor((o_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
@@ -336,9 +366,12 @@ public:
         return anyHit(x, y);
     }
 
-    bool Visible(const Point3 &o1, const Point3 &o2) const {
-        Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
-        Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+    bool Visible(const Point3 &o1, const Point3 &o2) const
+    {
+        // Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
+        // Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+        Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
+        Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
         Float x1 = (o1_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
         Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
         int x = (int)floor(x1);
@@ -392,7 +425,8 @@ public:
         return true;
     }
 
-    Quaternion concentricMap(const Point2 &uv) {
+    Quaternion concentricMap(const Point2 &uv)
+    {
         Float x = uv.x * 2 - 1;
         Float y = uv.y * 2 - 1;
         Float phi, r;
@@ -424,10 +458,12 @@ public:
         return normalize(Quaternion::fromDirectionPair(Vector3(0, 0, 1), Vector3(cos(phi) * sqrt(1 - z * z) / r, sin(phi) * sqrt(1 - z * z) / r, z)));
     }
 
-    Quaternion generateROMA(OccupancyMap *omarray, Point2 uv) {
+    Quaternion generateROMA(OccupancyMap *omarray, Point2 uv)
+    {
         /* base direction ---> ray direction */
         Quaternion q = concentricMap(uv);
         omarray->m_q = Quaternion(q);
+        omarray->m_rotate = q.toTransform().inverse(); // inversed ratation matrix
         // SLog(EDebug, "q %f %f %f %f", q.v.x, q.v.y, q.v.z, q.w);
 
         for (int x = 0; x < omSize; x++)
@@ -458,14 +494,16 @@ public:
         return q;
     }
 
-    void testSetAll(){
+    void testSetAll()
+    {
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
                 for (int k = 0; k < omSize; ++k)
                     set(i, j, k);
     }
 
-    void testSetBoxPattern() {
+    void testSetBoxPattern()
+    {
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
                 for (int k = 0; k < omSize; ++k)
@@ -475,7 +513,8 @@ public:
                 }
     }
 
-    void testSetBallPattern() {
+    void testSetBallPattern()
+    {
         int c = omSize / 2;
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
@@ -487,7 +526,8 @@ public:
                 }
     }
 
-    static inline int nearestOMindex(Vector3 d) {
+    static inline int nearestOMindex(Vector3 d)
+    {
         if (d.z < 0)
             d = -d;
         Point2 uv = direct2uv(d);
@@ -498,13 +538,14 @@ public:
         return int(floor(uv.x * OMNUMSQRT)) * OMNUMSQRT + int(floor(uv.y * OMNUMSQRT));
     }
 
-    std::string toString() const {
+    std::string toString() const
+    {
         std::ostringstream oss;
         oss << "BOM[" << endl
             << "  AABB: " << m_AABB.toString() << "," << endl
             << "  size = " << m_size << "," << endl
             << "  gridSize = " << m_gridSize << endl
-            << "  bomSize = " << omSize*omSize*omSize/8/1024 << " KB" << endl
+            << "  bomSize = " << omSize * omSize * omSize / 8 / 1024 << " KB" << endl
             << "  OM:\n";
 
         // for (int i = 0; i < omSize; ++i)

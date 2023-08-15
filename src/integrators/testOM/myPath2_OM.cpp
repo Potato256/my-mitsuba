@@ -409,6 +409,11 @@ public:
                 *cTime += (end - start);
                 *cNum += 1.0f;
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
+                // if(depth == 1)
+                // {
+                //     value = scene->sampleEmitterDirect(dRec, sampler->next2D());
+                //     vis = true;
+                // }
                 if (vis && !value.isZero())
                 {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
