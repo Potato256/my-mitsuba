@@ -400,30 +400,28 @@ public:
 
             if (bsdf->getType() & BSDF::ESmooth)
             {
+                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 auto start = high_resolution_clock::now();
                 int id = OM::nearestOMindex(dRec.d);
                 // if (id < 0 || id >= OMNUM)
                 // {
                 //     SLog(EError, "id error: %d\n", id);
                 // }
-
                 // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
-                bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);          
-                // bool vis = 0;
+                bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);  
+                // vis = 0;        
                 auto end   = high_resolution_clock::now();
                 auto duration = duration_cast<microseconds>(end - start);
                 *cTime += double(duration.count());
                 *cNum += 1.0f;
-                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 // if(depth == 1)
                 // {
                 //     value = scene->sampleEmitterDirect(dRec, sampler->next2D());
                 //     vis = true;
                 // }
-                if (vis && !value.isZero())
+                if (vis)
                 {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
-
                     BSDFSamplingRecord bRec(its, its.toLocal(dRec.d), ERadiance);
                     const Spectrum bsdfVal = bsdf->eval(bRec);
 

@@ -368,10 +368,10 @@ public:
 
     bool Visible(const Point3 &o1, const Point3 &o2) const
     {
-        // Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
-        // Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
-        Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
-        Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
+        Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
+        Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+        // Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
+        // Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
         Float x1 = (o1_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
         Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
         int x = (int)floor(x1);
