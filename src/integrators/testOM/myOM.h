@@ -63,7 +63,7 @@ public:
 
     inline void setArray(int *array, int x, int y, int z)
     {
-        array[(z >> 5) & MASK_l27b] |= 1 << (z & MASK_l5b);
+        array[z >> 5] |= 1 << (z & MASK_l5b);
     }
 
     inline bool check(int x, int y, int z) const
@@ -350,10 +350,10 @@ public:
 
     bool Trace(const Ray &ray, Float &nearT) const
     {
-        // Vector3 o_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.o - m_center), 0) * m_q).v + m_center;
-        // Vector3 d_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.d), 0) * m_q).v;
-        Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
-        Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
+        Vector3 o_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.o - m_center), 0) * m_q).v + m_center;
+        Vector3 d_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(ray.d), 0) * m_q).v;
+        // Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
+        // Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
         int x = (int)floor((o_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon);
         int y = (int)floor((o_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon);
         int z = (int)floor((o_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
@@ -379,10 +379,10 @@ public:
 
         if (!check(x, y, 0))
             return true;
-        // SLog(EError, "test\n");
         int z1 = (int)floor((o1_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
         int z2 = (int)floor((o2_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
 
+        /* Make sure z2 > z1 */
         if (z1 > z2)
         {
             int t = z1;

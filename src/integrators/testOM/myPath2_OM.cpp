@@ -103,7 +103,7 @@ public:
         oss << "rrEye: " << m_rrEye << endl;
         oss << "blockSize: " << m_blockSize << endl;
         oss << "connect number: " << m_connectNum << endl;
-        oss<<"time per connect: "<<m_connectTime*1000/m_connectNum*1000*1000<<"ns"<<endl;
+        oss <<"time per connect: "<<m_connectTime/m_connectNum*1000<<"ns"<<endl;
         oss << "-----------------------------------------\n";
         SLog(EInfo, oss.str().c_str());
     }
@@ -400,20 +400,19 @@ public:
 
             if (bsdf->getType() & BSDF::ESmooth)
             {
-                auto start = system_clock::now();
+                auto start = high_resolution_clock::now();
                 int id = OM::nearestOMindex(dRec.d);
                 // if (id < 0 || id >= OMNUM)
                 // {
                 //     SLog(EError, "id error: %d\n", id);
                 // }
-                // int id=0;
-                // bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
-                bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
-                
+
+                // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
+                bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);          
                 // bool vis = 0;
-                auto end   = system_clock::now();
+                auto end   = high_resolution_clock::now();
                 auto duration = duration_cast<microseconds>(end - start);
-                *cTime += double(duration.count()) * microseconds::period::num / microseconds::period::den;
+                *cTime += double(duration.count());
                 *cNum += 1.0f;
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 // if(depth == 1)

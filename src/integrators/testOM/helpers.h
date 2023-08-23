@@ -3,7 +3,7 @@
 
 MTS_NAMESPACE_BEGIN
 
-Point2 direct2uv(const Vector3& v) {
+inline Point2 direct2uv(const Vector3& v) {
     Float r = sqrt(1 - v.z);
     Float phi = atan2(v.y, v.x);
     if (r == 0)

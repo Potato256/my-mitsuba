@@ -39,8 +39,6 @@ private:
     SamplingStrategy m_strategy;
     std::string m_MISmodeString;
     MISMode m_MISmode;
-    /* 0 for chrono, 1 for time */
-    int m_timeMode;
 
     double m_connectNum = 0;
     double m_connectTime = 0;
@@ -52,7 +50,6 @@ public:
         m_rrEye = props.getFloat("rrEye", 0.6);
         m_blockSize = props.getInteger("blockSize", 64);
         m_jitterSample = props.getBoolean("jitterSample", true);
-        m_timeMode = props.getInteger("timeMode", 0);
         m_running = true;    
         
         m_strategyString = props.getString("strategy", "mis");
@@ -93,7 +90,7 @@ public:
         oss<<"blockSize: "<<m_blockSize<<endl;
         oss<<"connect number: "<<m_connectNum<<endl;
         // oss<<"time per connect: "<<m_connectTime/m_connectNum/CLOCKS_PER_SEC*1000*1000<<"us"<<endl;
-        oss<<"time per connect: "<<m_connectTime*1000/m_connectNum*1000<<"us"<<endl;
+        oss<<"time per connect: "<<m_connectTime/m_connectNum*1000<<"ns"<<endl;
         oss<<"-----------------------------------------\n";
         SLog(EInfo, oss.str().c_str());
     }
@@ -319,7 +316,7 @@ public:
             DirectSamplingRecord dRec(its);
 
             if (bsdf->getType() & BSDF::ESmooth) {
-                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(),true,m_timeMode,cTime);
+                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(),true,cTime);
                 *cNum += 1;
                 if (!value.isZero()) {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
