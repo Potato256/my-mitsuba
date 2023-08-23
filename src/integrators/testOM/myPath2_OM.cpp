@@ -160,6 +160,7 @@ public:
 
         /* init roma */
         roma = new OM[OMNUM];
+        #pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < OMNUMSQRT; i++)
             for (int j = 0; j < OMNUMSQRT; j++)
             {
@@ -403,13 +404,12 @@ public:
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 auto start = high_resolution_clock::now();
                 int id = OM::nearestOMindex(dRec.d);
-                // if (id < 0 || id >= OMNUM)
-                // {
-                //     SLog(EError, "id error: %d\n", id);
-                // }
+                if (id < 0 || id >= OMNUM)
+                {
+                    SLog(EError, "id error: %d\n", id);
+                }
                 // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
                 bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);  
-                // vis = 0;        
                 auto end   = high_resolution_clock::now();
                 auto duration = duration_cast<microseconds>(end - start);
                 *cTime += double(duration.count());
@@ -419,7 +419,7 @@ public:
                 //     value = scene->sampleEmitterDirect(dRec, sampler->next2D());
                 //     vis = true;
                 // }
-                if (vis)
+                if (vis && !value.isZero())
                 {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
                     BSDFSamplingRecord bRec(its, its.toLocal(dRec.d), ERadiance);

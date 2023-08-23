@@ -123,6 +123,7 @@ public:
         const Triangle *tri = mesh->getTriangles();
         const Point3 *pos = mesh->getVertexPositions();
         int triCnt = (int)mesh->getTriangleCount();
+        #pragma omp parallel for schedule(dynamic, 1)
         for (int i = 0; i < triCnt; ++i)
         {
             Point3 p1, p2, p3;
@@ -368,20 +369,18 @@ public:
 
     bool Visible(const Point3 &o1, const Point3 &o2) const
     {
-        Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
-        Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
-        // Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
-        // Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
+        // Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
+        // Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+        Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
+        Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
         Float x1 = (o1_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
         Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
         int x = (int)floor(x1);
         int y = (int)floor(y1);
-
         if (!check(x, y, 0))
             return true;
         int z1 = (int)floor((o1_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
         int z2 = (int)floor((o2_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
-
         /* Make sure z2 > z1 */
         if (z1 > z2)
         {
@@ -407,6 +406,7 @@ public:
         int p2 = z2 >> 5;
         int r1 = z1 & MASK_l5b;
         int r2 = 31 - z2 & MASK_l5b;
+        
         if (p1 == p2)
         {
             return ((bom[x][y][p1] >> r1) << (r1 + r2)) == 0;

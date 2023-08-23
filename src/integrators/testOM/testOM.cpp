@@ -109,7 +109,8 @@ public:
         int id = OM::nearestOMindex(r2.d);
         // return Spectrum(Float(id) / OMNUM) * m_color;
         // SLog(EInfo, "id: %d", id);
-        if (roma[id].rayIntersect(r, nearT))
+        // if (roma[id].rayIntersect(r, nearT))
+        if (m_om.rayIntersect(r, nearT))
         {
             return Spectrum(1.01f - nearT / m_maxDist) * m_color;
         }
