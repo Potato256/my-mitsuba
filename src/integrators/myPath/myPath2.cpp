@@ -39,9 +39,11 @@ private:
     SamplingStrategy m_strategy;
     std::string m_MISmodeString;
     MISMode m_MISmode;
+    /* 0 for chrono, 1 for time */
+    int m_timeMode;
 
-    Float m_connectNum = 0;
-    Float m_connectTime = 0;
+    double m_connectNum = 0;
+    double m_connectTime = 0;
 
 public:
     /// Initialize the integrator with the specified properties
@@ -50,6 +52,7 @@ public:
         m_rrEye = props.getFloat("rrEye", 0.6);
         m_blockSize = props.getInteger("blockSize", 64);
         m_jitterSample = props.getBoolean("jitterSample", true);
+        m_timeMode = props.getInteger("timeMode", 0);
         m_running = true;    
         
         m_strategyString = props.getString("strategy", "mis");
@@ -89,7 +92,8 @@ public:
         oss<<"rrEye: "<<m_rrEye<<endl;
         oss<<"blockSize: "<<m_blockSize<<endl;
         oss<<"connect number: "<<m_connectNum<<endl;
-        oss<<"time per connect: "<<m_connectTime/m_connectNum<<endl;
+        // oss<<"time per connect: "<<m_connectTime/m_connectNum/CLOCKS_PER_SEC*1000*1000<<"us"<<endl;
+        oss<<"time per connect: "<<m_connectTime*1000/m_connectNum*1000<<"us"<<endl;
         oss<<"-----------------------------------------\n";
         SLog(EInfo, oss.str().c_str());
     }
@@ -156,10 +160,10 @@ public:
         m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
         m_bitmap->clear();
 
-        float* cTimes = new float[nCores];
-        float* cNums = new float[nCores];
-        memset(cTimes, 0, nCores*sizeof(int));
-        memset(cNums, 0, nCores*sizeof(int));
+        double* cTimes = new double[nCores];
+        double* cNums = new  double[nCores];
+        memset(cTimes, 0, nCores*sizeof(double));
+        memset(cNums, 0,  nCores*sizeof(double));
 
         Spectrum *target = (Spectrum *) m_bitmap->getUInt8Data();
         std::string convergeCurve = "";
@@ -292,7 +296,7 @@ public:
     }
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
-    Spectrum Li(const RayDifferential &r, Scene* scene, Sampler* sampler, float* cTime, float* cNum) {
+    Spectrum Li(const RayDifferential &r, Scene* scene, Sampler* sampler, double* cTime, double* cNum) {
         /* Some aliases and local variables */
         Intersection its;
         RayDifferential ray(r);
@@ -315,7 +319,7 @@ public:
             DirectSamplingRecord dRec(its);
 
             if (bsdf->getType() & BSDF::ESmooth) {
-                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(),true,cTime);
+                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(),true,m_timeMode,cTime);
                 *cNum += 1;
                 if (!value.isZero()) {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);

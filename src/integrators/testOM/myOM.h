@@ -382,6 +382,7 @@ public:
         // SLog(EError, "test\n");
         int z1 = (int)floor((o1_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
         int z2 = (int)floor((o2_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
+
         if (z1 > z2)
         {
             int t = z1;

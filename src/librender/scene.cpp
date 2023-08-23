@@ -20,6 +20,9 @@
 #include <mitsuba/render/renderjob.h>
 #include <mitsuba/core/plugin.h>
 #include <mitsuba/core/statistics.h>
+#include <chrono>   
+using namespace std;
+using namespace chrono;
 
 #define DEFAULT_BLOCKSIZE 32
 
@@ -905,7 +908,7 @@ Spectrum Scene::evalTransmittanceAll(const Point &p1, bool p1OnSurface, const Po
 // ===========================================================================
 
 Spectrum Scene::sampleEmitterDirect(DirectSamplingRecord &dRec,
-                                    const Point2 &_sample, bool testVisibility, float *time) const
+                                    const Point2 &_sample, bool testVisibility, int timeMode, double *time) const
 {
     Point2 sample(_sample);
 
@@ -921,17 +924,23 @@ Spectrum Scene::sampleEmitterDirect(DirectSamplingRecord &dRec,
         {
             Ray ray(dRec.ref, dRec.d, Epsilon,
                     dRec.dist * (1 - ShadowEpsilon), dRec.time);
-            clock_t start = clock();
-            if (m_kdtree->rayIntersect(ray))
-            {
-                clock_t end = clock();
-                if (time != nullptr)
-                    *time += (float)(end - start);
-                return Spectrum(0.0f);
+
+            clock_t start1 = clock();
+            auto start2 = system_clock::now();
+            bool shadow = m_kdtree->rayIntersect(ray);
+            
+            clock_t end1 = clock();
+            auto end2   = system_clock::now();
+            if (time != nullptr){
+                if (timeMode==0){
+                    auto duration = duration_cast<microseconds>(end2 - start2);
+                    *time += double(duration.count()) * microseconds::period::num / microseconds::period::den;
+                } else if (timeMode==1){
+                    *time += double(end1 - start1) / CLOCKS_PER_SEC;
+                }
             }
-            clock_t end = clock();
-            if (time != nullptr)
-                *time += (float)(end - start);
+            if (shadow)
+                return Spectrum(0.0f);
         }
         dRec.object = emitter;
         dRec.pdf *= emPdf;

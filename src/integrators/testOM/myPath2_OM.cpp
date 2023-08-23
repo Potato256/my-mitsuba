@@ -5,6 +5,9 @@
 #include <fstream>
 #include "myOM.h"
 #include <time.h>
+#include <chrono>   
+using namespace std;
+using namespace chrono;
 
 #if defined(MTS_OPENMP)
 #include <omp.h>
@@ -49,8 +52,8 @@ private:
     OM m_om;
     OM* roma;
 
-    Float m_connectNum = 0;
-    Float m_connectTime = 0;
+    double m_connectNum = 0;
+    double m_connectTime = 0;
 
 public:
     /// Initialize the integrator with the specified properties
@@ -88,8 +91,7 @@ public:
         : Integrator(stream, manager) {}
 
     /// Serialize to a binary data stream
-    void serialize(Stream *stream, InstanceManager *manager) const
-    {
+    void serialize(Stream *stream, InstanceManager *manager) const {
         Integrator::serialize(stream, manager);
     }
 
@@ -101,7 +103,7 @@ public:
         oss << "rrEye: " << m_rrEye << endl;
         oss << "blockSize: " << m_blockSize << endl;
         oss << "connect number: " << m_connectNum << endl;
-        oss << "time per connect: " << m_connectTime / m_connectNum << endl;
+        oss<<"time per connect: "<<m_connectTime*1000/m_connectNum*1000*1000<<"ns"<<endl;
         oss << "-----------------------------------------\n";
         SLog(EInfo, oss.str().c_str());
     }
@@ -212,10 +214,10 @@ public:
         m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
         m_bitmap->clear();
 
-        float *cTimes = new float[nCores];
-        float *cNums = new float[nCores];
-        memset(cTimes, 0, nCores * sizeof(int));
-        memset(cNums, 0, nCores * sizeof(int));
+        double *cTimes = new double[nCores];
+        double *cNums = new  double[nCores];
+        memset(cTimes, 0, nCores * sizeof(double));
+        memset(cNums, 0, nCores *  sizeof(double));
 
         Spectrum *target = (Spectrum *)m_bitmap->getUInt8Data();
         std::string convergeCurve = "";
@@ -278,7 +280,7 @@ public:
                         target[ofs] = (target[ofs] * i_ + L) / (i_ + 1.0f);
                     }
                 }
-#pragma omp critical
+                #pragma omp critical
                 {
                     m_connectNum += cNums[tid];
                     m_connectTime += cTimes[tid];
@@ -372,7 +374,7 @@ public:
     }
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
-    Spectrum Li(const RayDifferential &r, Scene *scene, Sampler *sampler, float *cTime, float *cNum)
+    Spectrum Li(const RayDifferential &r, Scene *scene, Sampler *sampler, double *cTime, double *cNum)
     {
         /* Some aliases and local variables */
         Intersection its;
@@ -398,15 +400,20 @@ public:
 
             if (bsdf->getType() & BSDF::ESmooth)
             {
-                clock_t start = clock();
+                auto start = system_clock::now();
                 int id = OM::nearestOMindex(dRec.d);
-                if (id < 0 || id >= OMNUM)
-                {
-                    SLog(EError, "id error: %d\n", id);
-                }
-                bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
-                clock_t end = clock();
-                *cTime += (end - start);
+                // if (id < 0 || id >= OMNUM)
+                // {
+                //     SLog(EError, "id error: %d\n", id);
+                // }
+                // int id=0;
+                // bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
+                bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
+                
+                // bool vis = 0;
+                auto end   = system_clock::now();
+                auto duration = duration_cast<microseconds>(end - start);
+                *cTime += double(duration.count()) * microseconds::period::num / microseconds::period::den;
                 *cNum += 1.0f;
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 // if(depth == 1)

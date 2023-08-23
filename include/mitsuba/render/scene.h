@@ -480,7 +480,8 @@ public:
      *    the sampled ray divided by the sample probability.
      */
     Spectrum sampleEmitterDirect(DirectSamplingRecord &dRec,
-            const Point2 &sample, bool testVisibility = true,float* time = nullptr) const;
+            const Point2 &sample, bool testVisibility = true, int timeMode=0, 
+            double* time = nullptr) const;
 
     /**
      * \brief "Direct illumination" sampling routine for the main scene sensor
