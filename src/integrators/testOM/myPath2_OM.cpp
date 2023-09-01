@@ -402,12 +402,13 @@ public:
             if (bsdf->getType() & BSDF::ESmooth)
             {
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
-                auto start = high_resolution_clock::now();
+
                 int id = OM::nearestOMindex(dRec.d);
                 if (id < 0 || id >= OMNUM)
                 {
                     SLog(EError, "id error: %d\n", id);
                 }
+                auto start = high_resolution_clock::now();
                 // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
                 bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);  
                 auto end   = high_resolution_clock::now();

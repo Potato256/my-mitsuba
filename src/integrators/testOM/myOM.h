@@ -1,23 +1,28 @@
 #pragma once
 #include <mitsuba/render/scene.h>
 #include "helpers.h"
+#include <emmintrin.h>
 
 MTS_NAMESPACE_BEGIN
 
+#define INT_32
+
 #define OMSIZE 128
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 16
+#define OMNUMSQRT 32
 #define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 #define MASK_h27b 0xffffffe0
 #define MASK_l27b 0x07ffffff
 #define MASK_l5b 0x0000001f
+#define MASK_l7b 0x0000007f
 
 template <int omSize, int omDepth>
 class OccupancyMap
 {
 private:
     int bom[omSize][omSize][omDepth];
+    __m128i bom128[omSize][omSize][omDepth / 4];
     AABB m_AABB;
     Float m_size;
     Float m_gridSize;
@@ -123,7 +128,7 @@ public:
         const Triangle *tri = mesh->getTriangles();
         const Point3 *pos = mesh->getVertexPositions();
         int triCnt = (int)mesh->getTriangleCount();
-        #pragma omp parallel for schedule(dynamic, 1)
+#pragma omp parallel for schedule(dynamic, 1)
         for (int i = 0; i < triCnt; ++i)
         {
             Point3 p1, p2, p3;
@@ -381,6 +386,7 @@ public:
             return true;
         int z1 = (int)floor((o1_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
         int z2 = (int)floor((o2_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
+
         /* Make sure z2 > z1 */
         if (z1 > z2)
         {
@@ -402,11 +408,63 @@ public:
             z2 = 0;
         else if (z2 >= omSize)
             z2 = omSize - 1;
+
+#ifdef INT_32
+        int p1 = z1 >> 7;
+        int p2 = z2 >> 7;
+        int r1 = z1 & MASK_l7b;
+        int r2 = 127 - z2 & MASK_l7b;
+
+        if (p1 == p2)
+        {
+            // __m128i v128 = _mm_load_si128((__m128i *)bom128[x][y] + p1);
+            __m128i v128 = bom128[x][y][p1];
+            int k1 = r1 >> 5;
+            int k2 = (127 - r2) >> 5;
+            r1 = r1 & MASK_l5b;
+            r2 = r2 & MASK_l5b;
+            if (k1 == k2)
+            {
+                return (((v128.m128i_i32[k1] >> r1) << (r1 + r2)) == 0);
+            }
+            else
+            {
+                if (v128.m128i_i32[k1] >> r1 != 0)
+                    return false;
+                for (int i = k1 + 1; i < k2; i++)
+                {
+                    if (v128.m128i_i32[i] != 0)
+                        return false;
+                }
+                if (v128.m128i_i32[k2] << r2 != 0)
+                    return false;
+            }
+        }
+        else
+        {
+            __m128i v128 = _mm_load_si128((__m128i *)bom128[x][y] + p1);
+            int k1 = r1 >> 5;
+            int k2 = (127 - r2) >> 5;
+            r1 = r1 & MASK_l5b;
+            r2 = r2 & MASK_l5b;
+            if (v128.m128i_i32[k1] >> r1 != 0)
+                return false;
+            for (int i = p1 + 1; i < p2; i++)
+            {
+                v128 = _mm_load_si128((__m128i *)bom128[x][y] + i);
+                if(v128.m128i_i64[0] & v128.m128i_i64[1])
+                    return false;
+            }
+            v128 = _mm_load_si128((__m128i *)bom128[x][y] + p2);
+            if (v128.m128i_i32[k2] << r2 != 0)
+                return false;
+        }
+#else
         int p1 = z1 >> 5;
         int p2 = z2 >> 5;
         int r1 = z1 & MASK_l5b;
         int r2 = 31 - z2 & MASK_l5b;
-        
+
         if (p1 == p2)
         {
             return ((bom[x][y][p1] >> r1) << (r1 + r2)) == 0;
@@ -423,6 +481,7 @@ public:
             if (bom[x][y][p2] << r2 != 0)
                 return false;
         }
+#endif
         return true;
     }
 
@@ -488,6 +547,11 @@ public:
                         setArray(omarray->bom[x][y], x, y, i);
                     }
                     x_start_rot += v_step;
+                }
+
+                for (int i = 0; i < omDepth / 4; i++)
+                {
+                    omarray->bom128[x][y][i] = _mm_set_epi32(omarray->bom[x][y][i * 4 + 3], omarray->bom[x][y][i * 4 + 2], omarray->bom[x][y][i * 4 + 1], omarray->bom[x][y][i * 4]);
                 }
             }
         // SLog(EDebug, "omarray");
