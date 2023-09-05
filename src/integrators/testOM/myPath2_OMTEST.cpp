@@ -15,7 +15,7 @@ using namespace chrono;
 
 MTS_NAMESPACE_BEGIN
 
-class myPath2OMIntegrator : public Integrator
+class myPath2OMTESTIntegrator : public Integrator
 {
 public:
     MTS_DECLARE_CLASS()
@@ -41,7 +41,6 @@ private:
     int m_blockSize;
     bool m_jitterSample;
     bool m_running;
-    bool m_drawCurve;
 
     std::string m_strategyString;
     SamplingStrategy m_strategy;
@@ -57,7 +56,7 @@ private:
 
 public:
     /// Initialize the integrator with the specified properties
-    myPath2OMIntegrator(const Properties &props) : Integrator(props)
+    myPath2OMTESTIntegrator(const Properties &props) : Integrator(props)
     {
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
         m_rrEye = props.getFloat("rrEye", 0.6);
@@ -87,7 +86,7 @@ public:
     }
 
     // Unserialize from a binary data stream
-    myPath2OMIntegrator(Stream *stream, InstanceManager *manager)
+    myPath2OMTESTIntegrator(Stream *stream, InstanceManager *manager)
         : Integrator(stream, manager) {}
 
     /// Serialize to a binary data stream
@@ -196,62 +195,63 @@ public:
         Vector2i cropSize = film->getCropSize();
         Point2i cropOffset = film->getCropOffset();
 
-        size_t nCores = sched->getCoreCount();
-
-        Log(EInfo, "Starting render job (%ix%i, " SIZE_T_FMT " %s, " SSE_STR ") ..",
-            film->getCropSize().x, film->getCropSize().y,
-            nCores, nCores == 1 ? "core" : "cores");
-
-        /* Create a sampler instance for every core */
-        std::vector<Sampler *> samplers(sched->getCoreCount());
-        for (size_t i = 0; i < sched->getCoreCount(); ++i)
-        {
-            ref<Sampler> clonedSampler = sampler->clone();
-            clonedSampler->incRef();
-            samplers[i] = clonedSampler.get();
-        }
-
         /* Allocate memory */
         m_bitmap = new Bitmap(Bitmap::ESpectrum, Bitmap::EFloat, cropSize);
         m_bitmap->clear();
 
-        double *cTimes = new double[nCores];
-        double *cNums = new  double[nCores];
-        memset(cTimes, 0, nCores * sizeof(double));
-        memset(cNums, 0, nCores *  sizeof(double));
-
         Spectrum *target = (Spectrum *)m_bitmap->getUInt8Data();
-        std::string convergeCurve = "";
-        m_drawCurve = false;
-        if (cropSize.x == 1 && cropSize.y == 1)
-            m_drawCurve = true;
-
-        for (int i = 0; i < sampleCount; ++i)
-        {
-            if (m_drawCurve)
-            {
-                if (i % 1000 == 0)
-                    SLog(EInfo, "Frame: %i", i);
+        // Warm up
+        for (int i = 0; i < sampleCount; ++i) {
+            SLog(EInfo, "Frame: %i", i);
+            if (!m_running)
+                break;
+            int blockCnt = (int)blockOfs.size();
+            for (int block = 0; block < blockCnt; ++block) {
+                Point2i &bOfs = blockOfs[block];
+                int xBlockOfs = bOfs.x;
+                int yBlockOfs = bOfs.y;
+                for (int yofs = 0; yofs < m_blockSize; ++yofs) {
+                    for (int xofs = 0; xofs < m_blockSize; ++xofs) {
+                        int xRealOfs = xBlockOfs + xofs;
+                        int yRealOfs = yBlockOfs + yofs;
+                        if (xRealOfs >= cropSize.x || yRealOfs >= cropSize.y)
+                            continue;
+                        Point2 apertureSample, samplePos;
+                        samplePos = Point2(0.5, 0.5);
+                        if (m_jitterSample)
+                            samplePos = sampler->next2D();
+                        samplePos.y += cropOffset.y + yRealOfs;
+                        samplePos.x += cropOffset.x + xRealOfs;
+                        RayDifferential eyeRay;
+                        Spectrum sampleValue = sensor->sampleRay(
+                            eyeRay, samplePos, apertureSample, 0.0f);
+                        int ofs = yRealOfs * cropSize.x + xRealOfs;
+                        Spectrum L = Li(eyeRay, scene, sampler, 0, 0);
+                    }
+                }
             }
-            else
-                SLog(EInfo, "Frame: %i", i);
+        }
+         
+        
+        auto start = high_resolution_clock::now();
+        auto end = high_resolution_clock::now();
+        auto duration = duration_cast<microseconds>(end - start);
+
+        
+        double num1 = 0;
+        start = high_resolution_clock::now();
+        for (int i = 0; i < sampleCount; ++i) {
+            SLog(EInfo, "Frame: %i", i);
             if (!m_running)
                 break;
             /* Trace eye subpath*/
             int blockCnt = (int)blockOfs.size();
-#if defined(MTS_OPENMP)
-#pragma omp parallel for schedule(dynamic)
-#endif
+
             for (int block = 0; block < blockCnt; ++block)
             {
-                int tid = mts_omp_get_thread_num();
-                Sampler *sampler = samplers[tid];
                 Point2i &bOfs = blockOfs[block];
                 int xBlockOfs = bOfs.x;
                 int yBlockOfs = bOfs.y;
-                cNums[tid] = 0.0f;
-                cTimes[tid] = 0.0f;
-
                 for (int yofs = 0; yofs < m_blockSize; ++yofs)
                 {
                     for (int xofs = 0; xofs < m_blockSize; ++xofs)
@@ -261,66 +261,70 @@ public:
                         if (xRealOfs >= cropSize.x || yRealOfs >= cropSize.y)
                             continue;
                         Point2 apertureSample, samplePos;
-
-                        if (needsApertureSample)
-                            apertureSample = sampler->next2D();
                         samplePos = Point2(0.5, 0.5);
                         if (m_jitterSample)
                             samplePos = sampler->next2D();
-
                         samplePos.y += cropOffset.y + yRealOfs;
                         samplePos.x += cropOffset.x + xRealOfs;
 
                         RayDifferential eyeRay;
                         Spectrum sampleValue = sensor->sampleRay(
                             eyeRay, samplePos, apertureSample, 0.0f);
-
                         int ofs = yRealOfs * cropSize.x + xRealOfs;
-                        Spectrum L = Li(eyeRay, scene, sampler, &cTimes[tid], &cNums[tid]);
-                        float i_ = (float)i;
-                        target[ofs] = (target[ofs] * i_ + L) / (i_ + 1.0f);
+                        Spectrum L = Li(eyeRay, scene, sampler, &num1, 0);
                     }
                 }
-                #pragma omp critical
+            }
+        }
+        end   = high_resolution_clock::now();
+        duration = duration_cast<microseconds>(end - start);
+        double time1 = double(duration.count());  
+        
+        start = high_resolution_clock::now();
+        double num2 = 0;
+        for (int i = 0; i < sampleCount; ++i)
+        {
+            SLog(EInfo, "Frame: %i", i);
+            if (!m_running)
+                break;
+            int blockCnt = (int)blockOfs.size();
+            for (int block = 0; block < blockCnt; ++block)
+            {
+                Point2i &bOfs = blockOfs[block];
+                int xBlockOfs = bOfs.x;
+                int yBlockOfs = bOfs.y;
+                for (int yofs = 0; yofs < m_blockSize; ++yofs)
                 {
-                    m_connectNum += cNums[tid];
-                    m_connectTime += cTimes[tid];
+                    for (int xofs = 0; xofs < m_blockSize; ++xofs)
+                    {
+                        int xRealOfs = xBlockOfs + xofs;
+                        int yRealOfs = yBlockOfs + yofs;
+                        if (xRealOfs >= cropSize.x || yRealOfs >= cropSize.y)
+                            continue;
+                        Point2 apertureSample, samplePos;
+                        samplePos = Point2(0.5, 0.5);
+                        if (m_jitterSample)
+                            samplePos = sampler->next2D();
+                        samplePos.y += cropOffset.y + yRealOfs;
+                        samplePos.x += cropOffset.x + xRealOfs;
+
+                        RayDifferential eyeRay;
+                        Spectrum sampleValue = sensor->sampleRay(
+                            eyeRay, samplePos, apertureSample, 0.0f);
+                        int ofs = yRealOfs * cropSize.x + xRealOfs;
+                        Spectrum L = Li(eyeRay, scene, sampler, &num2, 1);
+                    }
                 }
             }
-            film->setBitmap(m_bitmap);
-            queue->signalRefresh(job);
-            if (m_drawCurve)
-                convergeCurve += target[0].toString() + "\n";
         }
+        end   = high_resolution_clock::now();
+        duration = duration_cast<microseconds>(end - start);
+        double time2 = double(duration.count());  
+        
+
+        m_connectTime += time2 - time1;
+        m_connectNum += 2*num2 - num1;   
         printInfos();
-        if (m_drawCurve)
-        {
-            std::ofstream fout;
-            std::ostringstream save;
-            save << "./experiments/results/";
-            save << (m_jitterSample ? "jitter/" : "nojitter/");
-            switch (m_strategy)
-            {
-            case PathBSDF:
-                save << "bsdf";
-                break;
-            case PathNEE:
-                save << "nee";
-                break;
-            case PathMIS:
-                save << "mis-" << m_MISmodeString;
-                break;
-            }
-            float e = round(log10(sampleCount));
-            save << "-" << round(sampleCount / pow(10, e));
-            save << "e" << round(log10(sampleCount)) << ".txt";
-            fout.open(save.str().c_str());
-            fout << convergeCurve;
-            fout.close();
-            SLog(EInfo, "Saving result to %s", save.str().c_str());
-        }
-        delete[] cTimes;
-        delete[] cNums;
         delete[] roma;
         return true;
     }
@@ -375,7 +379,7 @@ public:
     }
 
     /// Query for an unbiased estimate of the radiance along <tt>r</tt>
-    Spectrum Li(const RayDifferential &r, Scene *scene, Sampler *sampler, double *cTime, double *cNum)
+    Spectrum Li(const RayDifferential &r, Scene *scene, Sampler *sampler, double *cNum, bool shadowTest)
     {
         /* Some aliases and local variables */
         Intersection its;
@@ -414,13 +418,15 @@ public:
                     value = scene->sampleEmitterDirect(dRec, sampler->next2D());
                     vis = true;
                 } else {
-                    auto start = high_resolution_clock::now();
                     // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
-                    bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);  
-                    auto end   = high_resolution_clock::now();
-                    auto duration = duration_cast<microseconds>(end - start);
-                    *cTime += double(duration.count());
-                    *cNum += 1.0f;
+                    bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
+                    if (shadowTest){
+                        // int id = OM::nearestOMindex(dRec.d);
+                        vis = roma[id].Visible(its.p + its.shFrame.n * 0.51, dRec.p);
+                    
+                    }
+                    if(cNum)
+                        *cNum += 1.0f;
                 }
                 if (vis && !value.isZero())
                 {
@@ -477,6 +483,6 @@ public:
     }
 };
 
-MTS_IMPLEMENT_CLASS_S(myPath2OMIntegrator, false, Integrator)
-MTS_EXPORT_PLUGIN(myPath2OMIntegrator, "myPath2_OM");
+MTS_IMPLEMENT_CLASS_S(myPath2OMTESTIntegrator, false, Integrator)
+MTS_EXPORT_PLUGIN(myPath2OMTESTIntegrator, "myPath2_OMTEST");
 MTS_NAMESPACE_END
