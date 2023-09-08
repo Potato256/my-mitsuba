@@ -18,8 +18,8 @@ plugins += env.SharedLibrary('myBDPT2', ['myBDPT/myBDPT2.cpp'])
 plugins += env.SharedLibrary('myBDPTsp', ['myBDPT/myBDPTsp.cpp'])
 plugins += env.SharedLibrary('LVCBPT', ['myBDPT/LVCBPT.cpp'])
 
-plugins += env.SharedLibrary('testOM', ['testOM/testOM.cpp'])
-plugins += env.SharedLibrary('testNEE_OM', ['testOM/testNEE_OM.cpp'])
+# plugins += env.SharedLibrary('testOM', ['testOM/testOM.cpp'])
+# plugins += env.SharedLibrary('testNEE_OM', ['testOM/testNEE_OM.cpp'])
 # plugins += env.SharedLibrary('myPath_OM', ['testOM/myPath_OM.cpp'])
 plugins += env.SharedLibrary('myPath2_OM', ['testOM/myPath2_OM.cpp'])
 
