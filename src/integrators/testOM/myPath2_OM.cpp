@@ -5,7 +5,7 @@
 #include <fstream>
 #include "myOM.h"
 #include <time.h>
-#include <chrono>   
+#include <chrono>
 using namespace std;
 using namespace chrono;
 
@@ -50,7 +50,7 @@ private:
 
     AABB m_baseAABB;
     OM m_om;
-    OM* roma;
+    OM *roma;
 
     double m_connectNum = 0;
     double m_connectTime = 0;
@@ -91,7 +91,8 @@ public:
         : Integrator(stream, manager) {}
 
     /// Serialize to a binary data stream
-    void serialize(Stream *stream, InstanceManager *manager) const {
+    void serialize(Stream *stream, InstanceManager *manager) const
+    {
         Integrator::serialize(stream, manager);
     }
 
@@ -103,7 +104,7 @@ public:
         oss << "rrEye: " << m_rrEye << endl;
         oss << "blockSize: " << m_blockSize << endl;
         oss << "connect number: " << m_connectNum << endl;
-        oss <<"time per connect: "<<m_connectTime/m_connectNum*1000<<"ns"<<endl;
+        oss << "time per connect: " << m_connectTime / m_connectNum * 1000 << "ns" << endl;
         oss << "-----------------------------------------\n";
         SLog(EInfo, oss.str().c_str());
     }
@@ -160,7 +161,7 @@ public:
 
         /* init roma */
         roma = new OM[OMNUM];
-        #pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic)
         for (int i = 0; i < OMNUMSQRT; i++)
             for (int j = 0; j < OMNUMSQRT; j++)
             {
@@ -216,9 +217,9 @@ public:
         m_bitmap->clear();
 
         double *cTimes = new double[nCores];
-        double *cNums = new  double[nCores];
+        double *cNums = new double[nCores];
         memset(cTimes, 0, nCores * sizeof(double));
-        memset(cNums, 0, nCores *  sizeof(double));
+        memset(cNums, 0, nCores * sizeof(double));
 
         Spectrum *target = (Spectrum *)m_bitmap->getUInt8Data();
         std::string convergeCurve = "";
@@ -281,7 +282,7 @@ public:
                         target[ofs] = (target[ofs] * i_ + L) / (i_ + 1.0f);
                     }
                 }
-                #pragma omp critical
+#pragma omp critical
                 {
                     m_connectNum += cNums[tid];
                     m_connectTime += cTimes[tid];
@@ -402,26 +403,34 @@ public:
             if (bsdf->getType() & BSDF::ESmooth)
             {
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
-
+                auto start = high_resolution_clock::now();
                 int id = OM::nearestOMindex(dRec.d);
                 if (id < 0 || id >= OMNUM)
                 {
                     SLog(EError, "id error: %d\n", id);
                 }
-                bool vis = false;
-                if(depth == -10)
+
+                // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
+                bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
+                // repeat
+                id = OM::nearestOMindex(dRec.d);
+                if (id < 0 || id >= OMNUM)
                 {
-                    value = scene->sampleEmitterDirect(dRec, sampler->next2D());
-                    vis = true;
-                } else {
-                    auto start = high_resolution_clock::now();
-                    // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
-                    bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);  
-                    auto end   = high_resolution_clock::now();
-                    auto duration = duration_cast<microseconds>(end - start);
-                    *cTime += double(duration.count());
-                    *cNum += 1.0f;
+                    SLog(EError, "id error: %d\n", id);
                 }
+
+                // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
+                vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
+                auto end = high_resolution_clock::now();
+                auto duration = duration_cast<microseconds>(end - start)/2;
+                *cTime += double(duration.count());
+                *cNum += 1.0f;
+                // if(depth == 1)
+                // {
+                //     value = scene->sampleEmitterDirect(dRec, sampler->next2D());
+                //     vis = true;
+                // }
+
                 if (vis && !value.isZero())
                 {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);

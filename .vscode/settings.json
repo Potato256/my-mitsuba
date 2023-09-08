@@ -93,6 +93,14 @@
         "xtree": "cpp",
         "filesystem": "cpp",
         "any": "cpp",
-        "memory_resource": "cpp"
+        "memory_resource": "cpp",
+        "eigen": "cpp",
+        "dense": "cpp",
+        "core": "cpp",
+        "iterativelinearsolvers": "cpp",
+        "lu": "cpp",
+        "orderingmethods": "cpp",
+        "sparsecore": "cpp",
+        "sparseqr": "cpp"
     }
 }

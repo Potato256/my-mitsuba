@@ -2,14 +2,15 @@
 #include <mitsuba/render/scene.h>
 #include "helpers.h"
 #include <emmintrin.h>
-
+#include <Eigen/Core>
+#include <Eigen/Dense>
 MTS_NAMESPACE_BEGIN
 
-#define INT_32
+#define INT_128
 
-#define OMSIZE 128
+#define OMSIZE 256
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 32
+#define OMNUMSQRT 16
 #define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 #define MASK_h27b 0xffffffe0
@@ -28,7 +29,9 @@ private:
     Float m_gridSize;
     Float m_gridSizeRecp;
     Quaternion m_q;
+    Vector3 m_dir;
     Transform m_rotate;
+    Eigen::Matrix3f m_rotate_eigen;
     Vector3 m_center;
 
 public:
@@ -376,8 +379,24 @@ public:
     {
         // Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
         // Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+        Float length = (o2 - o1).length();
+        if(dot(m_dir, o2 - o1) < 0)
+            length = -length;
+        // Point3 dir1 = o1 - m_center;
+        // Point3 dir2 = o2 - m_center;
+        // Eigen::Vector3f dir1_eigen(dir1.x, dir1.y, dir1.z);
+        // Eigen::Vector3f dir2_eigen(dir2.x, dir2.y, dir2.z);
+        // Eigen::Vector3f o1_aligned_eigen = m_rotate_eigen * dir1_eigen;
+        // Eigen::Vector3f o2_aligned_eigen = m_rotate_eigen * dir2_eigen;
+        // Point3 o1_aligned(o1_aligned_eigen.x(), o1_aligned_eigen.y(), o1_aligned_eigen.z());
+        // o1_aligned += m_center;
+        // Point3 o2_aligned(o2_aligned_eigen.x(), o2_aligned_eigen.y(), o2_aligned_eigen.z());
+        // o2_aligned += m_center;
+
         Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
-        Point3 o2_aligned = m_rotate(o2 - m_center) + m_center;
+        Point3 o2_aligned = o1_aligned + length * m_dir;
+        //m_rotate(o2 - m_center) + m_center;
+
         Float x1 = (o1_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
         Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
         int x = (int)floor(x1);
@@ -386,7 +405,6 @@ public:
             return true;
         int z1 = (int)floor((o1_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
         int z2 = (int)floor((o2_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
-
         /* Make sure z2 > z1 */
         if (z1 > z2)
         {
@@ -409,7 +427,7 @@ public:
         else if (z2 >= omSize)
             z2 = omSize - 1;
 
-#ifdef INT_32
+#ifdef INT_128
         int p1 = z1 >> 7;
         int p2 = z2 >> 7;
         int r1 = z1 & MASK_l7b;
@@ -417,8 +435,7 @@ public:
 
         if (p1 == p2)
         {
-            // __m128i v128 = _mm_load_si128((__m128i *)bom128[x][y] + p1);
-            __m128i v128 = bom128[x][y][p1];
+            __m128i v128 = _mm_load_si128((__m128i *)bom128[x][y] + p1);
             int k1 = r1 >> 5;
             int k2 = (127 - r2) >> 5;
             r1 = r1 & MASK_l5b;
@@ -485,7 +502,7 @@ public:
         return true;
     }
 
-    Quaternion concentricMap(const Point2 &uv)
+    Vector3 concentricMap(const Point2 &uv)
     {
         Float x = uv.x * 2 - 1;
         Float y = uv.y * 2 - 1;
@@ -515,15 +532,16 @@ public:
                 phi = 0;
         }
         Float z = 1 - r * r;
-        return normalize(Quaternion::fromDirectionPair(Vector3(0, 0, 1), Vector3(cos(phi) * sqrt(1 - z * z) / r, sin(phi) * sqrt(1 - z * z) / r, z)));
+        return Vector3(cos(phi) * sqrt(1 - z * z) / r, sin(phi) * sqrt(1 - z * z) / r, z);
     }
 
     Quaternion generateROMA(OccupancyMap *omarray, Point2 uv)
     {
         /* base direction ---> ray direction */
-        Quaternion q = concentricMap(uv);
-        omarray->m_q = Quaternion(q);
-        omarray->m_rotate = q.toTransform().inverse(); // inversed ratation matrix
+        omarray->m_dir = normalize(concentricMap(uv));
+        omarray->m_q = normalize(Quaternion::fromDirectionPair(Vector3(0, 0, 1), omarray->m_dir));
+        omarray->m_rotate = omarray->m_q.toTransform().inverse(); // inversed ratation matrix
+
         // SLog(EDebug, "q %f %f %f %f", q.v.x, q.v.y, q.v.z, q.w);
 
         for (int x = 0; x < omSize; x++)
@@ -533,8 +551,8 @@ public:
                 Vector3 x_start(Float(x - radiu), Float(y - radiu), 0.5f - radiu);
                 Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu - 0.5f);
                 // rotate
-                Vector3 x_start_rot = (q * Quaternion(x_start, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
-                Vector3 x_end_rot = (q * Quaternion(x_end, 0) * Quaternion(-q.v, q.w)).v + Vector3(radiu);
+                Vector3 x_start_rot = omarray->m_q.toTransform()(x_start) + Vector3(radiu);
+                Vector3 x_end_rot = omarray->m_q.toTransform()(x_end) + Vector3(radiu);
                 Vector3 v_step = (x_end_rot - x_start_rot) / Float(omSize - 1);
                 for (int i = 0; i < omSize; i++)
                 {
@@ -556,7 +574,7 @@ public:
             }
         // SLog(EDebug, "omarray");
         // SLog(EDebug, omarray->toString().c_str());
-        return q;
+        return omarray->m_q;
     }
 
     void testSetAll()
