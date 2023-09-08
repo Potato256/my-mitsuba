@@ -22,6 +22,8 @@ plugins += env.SharedLibrary('LVCBPT', ['myBDPT/LVCBPT.cpp'])
 # plugins += env.SharedLibrary('testNEE_OM', ['testOM/testNEE_OM.cpp'])
 # plugins += env.SharedLibrary('myPath_OM', ['testOM/myPath_OM.cpp'])
 plugins += env.SharedLibrary('myPath2_OM', ['testOM/myPath2_OM.cpp'])
+plugins += env.SharedLibrary('myPath2_OMTEST', ['testOM/myPath2_OMTEST.cpp'])
+plugins += env.SharedLibrary('LVCBPT_OM', ['testOM/LVCBPT_OM.cpp'])
 
 # Photon mapping-based techniques
 plugins += env.SharedLibrary('photonmapper', ['photonmapper/photonmapper.cpp', 'photonmapper/bre.cpp'])
