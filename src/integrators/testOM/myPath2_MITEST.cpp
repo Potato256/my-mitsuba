@@ -15,7 +15,7 @@ using namespace chrono;
 
 MTS_NAMESPACE_BEGIN
 
-class myPath2OMTESTIntegrator : public Integrator
+class myPath2MITESTIntegrator : public Integrator
 {
 public:
     MTS_DECLARE_CLASS()
@@ -56,7 +56,7 @@ private:
 
 public:
     /// Initialize the integrator with the specified properties
-    myPath2OMTESTIntegrator(const Properties &props) : Integrator(props)
+    myPath2MITESTIntegrator(const Properties &props) : Integrator(props)
     {
         m_maxDepthEye = props.getInteger("maxDepthEye", 50);
         m_rrEye = props.getFloat("rrEye", 0.6);
@@ -86,7 +86,7 @@ public:
     }
 
     // Unserialize from a binary data stream
-    myPath2OMTESTIntegrator(Stream *stream, InstanceManager *manager)
+    myPath2MITESTIntegrator(Stream *stream, InstanceManager *manager)
         : Integrator(stream, manager) {}
 
     /// Serialize to a binary data stream
@@ -312,7 +312,7 @@ public:
                         Spectrum sampleValue = sensor->sampleRay(
                             eyeRay, samplePos, apertureSample, 0.0f);
                         int ofs = yRealOfs * cropSize.x + xRealOfs;
-                        Spectrum L = Li(eyeRay, scene, sampler, &num2, 100);
+                        Spectrum L = Li(eyeRay, scene, sampler, &num2, 10);
                     }
                 }
             }
@@ -405,31 +405,17 @@ public:
 
             if (bsdf->getType() & BSDF::ESmooth)
             {
-                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
+                Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D());
 
-                int id = OM::nearestOMindex(dRec.d);
-                if (id < 0 || id >= OMNUM)
-                {
-                    SLog(EError, "id error: %d\n", id);
-                }
-                bool vis = false;
-                if(depth == -10)
-                {
+                for (int i = 0; i < shadowTest; i++){
                     value = scene->sampleEmitterDirect(dRec, sampler->next2D());
-                    vis = true;
-                } else {
-                    // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
-                    bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
-                    for (int i = 0; i < shadowTest; i++){
-                        int id = OM::nearestOMindex(dRec.d);
-                        vis |= roma[id].Visible(its.p + its.shFrame.n * (0.5+0.001*i), dRec.p);
-                        if(cNum)
-                            *cNum += 1.0f;
-                    }
                     if(cNum)
                         *cNum += 1.0f;
                 }
-                if (vis && !value.isZero())
+                if(cNum)
+                    *cNum += 1.0f;
+                
+                if (!value.isZero())
                 {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);
                     BSDFSamplingRecord bRec(its, its.toLocal(dRec.d), ERadiance);
@@ -484,6 +470,6 @@ public:
     }
 };
 
-MTS_IMPLEMENT_CLASS_S(myPath2OMTESTIntegrator, false, Integrator)
-MTS_EXPORT_PLUGIN(myPath2OMTESTIntegrator, "myPath2_OMTEST");
+MTS_IMPLEMENT_CLASS_S(myPath2MITESTIntegrator, false, Integrator)
+MTS_EXPORT_PLUGIN(myPath2MITESTIntegrator, "myPath2_MITEST");
 MTS_NAMESPACE_END
