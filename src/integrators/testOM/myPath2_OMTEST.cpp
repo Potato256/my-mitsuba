@@ -102,7 +102,7 @@ public:
         oss << "rrEye: " << m_rrEye << endl;
         oss << "blockSize: " << m_blockSize << endl;
         oss << "connect number: " << m_connectNum << endl;
-        oss <<"time per connect: "<<m_connectTime/m_connectNum*1000<<"ns"<<endl;
+        oss <<"time per connect: "<<m_connectTime/m_connectNum<<"ns"<<endl;
         oss << "-----------------------------------------\n";
         SLog(EInfo, oss.str().c_str());
     }
@@ -234,7 +234,7 @@ public:
         
         auto start = high_resolution_clock::now();
         auto end = high_resolution_clock::now();
-        auto duration = duration_cast<microseconds>(end - start);
+        auto duration = duration_cast<nanoseconds>(end - start);
 
         
         double num1 = 0;
@@ -276,7 +276,7 @@ public:
             }
         }
         end   = high_resolution_clock::now();
-        duration = duration_cast<microseconds>(end - start);
+        duration = duration_cast<nanoseconds>(end - start);
         double time1 = double(duration.count());  
         
         start = high_resolution_clock::now();
@@ -317,7 +317,7 @@ public:
             }
         }
         end   = high_resolution_clock::now();
-        duration = duration_cast<microseconds>(end - start);
+        duration = duration_cast<nanoseconds>(end - start);
         double time2 = double(duration.count());  
         
 
