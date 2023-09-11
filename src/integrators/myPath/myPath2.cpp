@@ -90,7 +90,7 @@ public:
         oss<<"blockSize: "<<m_blockSize<<endl;
         oss<<"connect number: "<<m_connectNum<<endl;
         // oss<<"time per connect: "<<m_connectTime/m_connectNum/CLOCKS_PER_SEC*1000*1000<<"us"<<endl;
-        oss<<"time per connect: "<<m_connectTime/m_connectNum*1000<<"ns"<<endl;
+        oss<<"time per connect: "<<m_connectTime/m_connectNum<<"ns"<<endl;
         oss<<"-----------------------------------------\n";
         SLog(EInfo, oss.str().c_str());
     }

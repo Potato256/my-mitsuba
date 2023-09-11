@@ -422,12 +422,10 @@ public:
                     bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
                     for (int i = 0; i < shadowTest; i++){
                         int id = OM::nearestOMindex(dRec.d);
-                        vis |= roma[id].Visible(its.p + its.shFrame.n * (0.5+0.001*i), dRec.p);
-                        if(cNum)
-                            *cNum += 1.0f;
+                        //vis |= roma[id].Visible(its.p + its.shFrame.n * (0.5+0.001*i), dRec.p);
                     }
                     if(cNum)
-                        *cNum += 1.0f;
+                        *cNum += shadowTest + 1.0f;
                 }
                 if (vis && !value.isZero())
                 {

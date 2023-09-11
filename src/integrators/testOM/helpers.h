@@ -3,11 +3,16 @@
 
 MTS_NAMESPACE_BEGIN
 
-inline Point2 direct2uv(const Vector3& v) {
+inline void direct2uv(const Vector3& v, Point2& uv) {
     Float r = sqrt(1 - v.z);
     Float phi = atan2(v.y, v.x);
     if (r == 0)
-        return Point2(0.5, 0.5);
+    {
+        uv.x = 0;
+        uv.y = 0;
+        return;
+        // return Point2(0.5, 0.5);
+    }
     Float a, b;
     if (phi < -M_PI / 4)
         phi += 2 * M_PI;
@@ -31,7 +36,9 @@ inline Point2 direct2uv(const Vector3& v) {
         b = -r;
         a = -(phi - M_PI * 3 / 2) * b / (M_PI / 4);
     }
-    return Point2((a + 1) / 2, (b + 1) / 2);
+    uv.x = (a + 1) / 2;
+    uv.y = (b + 1) / 2;
+    //return Point2((a + 1) / 2, (b + 1) / 2);
 }
 
 inline bool pointInAABB(const Point3& p, const AABB& aabb) {

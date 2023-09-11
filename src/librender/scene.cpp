@@ -929,7 +929,7 @@ Spectrum Scene::sampleEmitterDirect(DirectSamplingRecord &dRec,
             bool shadow = m_kdtree->rayIntersect(ray);
             auto end   = high_resolution_clock::now();
             if (time != nullptr){
-                auto duration = duration_cast<microseconds>(end - start);
+                auto duration = duration_cast<nanoseconds>(end - start);
                 *time += double(duration.count());
             }
             if (shadow)
