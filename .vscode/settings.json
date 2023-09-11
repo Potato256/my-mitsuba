@@ -101,6 +101,7 @@
         "lu": "cpp",
         "orderingmethods": "cpp",
         "sparsecore": "cpp",
-        "sparseqr": "cpp"
+        "sparseqr": "cpp",
+        "eigenvalues": "cpp"
     }
 }
