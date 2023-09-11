@@ -374,10 +374,14 @@ public:
     {
         // Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
         // Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
+        /* 23ns */
         Vector3f o21 = o2 - o1;
+        /* 26ns*/
         Float length = o21.length();
+        /* 28ns */
         if(dot(m_dir, o21) < 0)
             length = -length;
+
         // Point3 dir1 = o1 - m_center;
         // Point3 dir2 = o2 - m_center;
         // Eigen::Vector3f dir1_eigen(dir1.x, dir1.y, dir1.z);
@@ -389,16 +393,20 @@ public:
         // Point3 o2_aligned(o2_aligned_eigen.x(), o2_aligned_eigen.y(), o2_aligned_eigen.z());
         // o2_aligned += m_center;
 
+        /* 31ns */
         Point3 o1_aligned = m_rotate(o1 - m_center) + m_center;
+        /* 54ns */
         Point3 o2_aligned = o1_aligned + length * m_dir;
-        //m_rotate(o2 - m_center) + m_center;
 
+        /* 57ns */
         Float x1 = (o1_aligned.x - m_AABB.min.x) * m_gridSizeRecp + Epsilon;
         Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
         int x = (int)floor(x1);
         int y = (int)floor(y1);
         if (x < 0 || x > omSize || y < 0 || y > omSize)
             return true;
+        
+        /* 61ns */
         int z1 = (int)floor((o1_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
         int z2 = (int)floor((o2_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
         /* Make sure z2 > z1 */
@@ -412,6 +420,8 @@ public:
         {
             return true;
         }
+
+        /* 65ns */
         z1 += 1;
         z2 -= 1;
         if (z1 < 0)
@@ -467,11 +477,13 @@ public:
                 return false;
         }
 #else
+        /* 66ns */
         int p1 = z1 >> 5;
         int p2 = z2 >> 5;
         int r1 = z1 & MASK_l5b;
         int r2 = 31 - z2 & MASK_l5b;
 
+        /* 67ns */
         if (p1 == p2)
         {
             return ((bom[x][y][p1] >> r1) << (r1 + r2)) == 0;
@@ -488,6 +500,7 @@ public:
             if (bom[x][y][p2] << r2 != 0)
                 return false;
         }
+        /* 70ns */
 #endif
         return true;
     }
