@@ -6,6 +6,7 @@ MTS_NAMESPACE_BEGIN
 inline Point2 direct2uv(const Vector3& v) {
     Float r = sqrt(1 - v.z);
     Float phi = atan2(v.y, v.x);
+    // Float phi = 0;
     if (r == 0)
         return Point2(0.5, 0.5);
     Float a, b;

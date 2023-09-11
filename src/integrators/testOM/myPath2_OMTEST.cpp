@@ -180,7 +180,6 @@ public:
     bool render(Scene *scene, RenderQueue *queue,
                 const RenderJob *job, int sceneResID, int sensorResID, int unused)
     {
-
         ref<Scheduler> sched = Scheduler::getInstance();
         int blockSize = scene->getBlockSize();
 
@@ -387,7 +386,7 @@ public:
         Spectrum Li(0.0f);
         Spectrum throughput(1.0f);
         Float eta = 1.0f;
-
+        double cNumAdd = 0;
         scene->rayIntersect(ray, its);
         ray.mint = Epsilon;
 
@@ -406,29 +405,18 @@ public:
             if (bsdf->getType() & BSDF::ESmooth)
             {
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
+                Point3f src = its.p + its.shFrame.n * 0.5;
+                int id = 0;
+                id = OM::nearestOMindex(dRec.d);
+                // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
+                bool vis = roma[id].Visible(src, dRec.p);
+                for (int i = 0; i < shadowTest; i++){
+                    int id = OM::nearestOMindex(dRec.d);
+                    vis = roma[id].Visible(src, dRec.p);
+                }
+                if (cNum)
+                    *cNum += 1.0f + shadowTest;
 
-                int id = OM::nearestOMindex(dRec.d);
-                if (id < 0 || id >= OMNUM)
-                {
-                    SLog(EError, "id error: %d\n", id);
-                }
-                bool vis = false;
-                if(depth == -10)
-                {
-                    value = scene->sampleEmitterDirect(dRec, sampler->next2D());
-                    vis = true;
-                } else {
-                    // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
-                    bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
-                    for (int i = 0; i < shadowTest; i++){
-                        int id = OM::nearestOMindex(dRec.d);
-                        vis |= roma[id].Visible(its.p + its.shFrame.n * (0.5+0.001*i), dRec.p);
-                        if(cNum)
-                            *cNum += 1.0f;
-                    }
-                    if(cNum)
-                        *cNum += 1.0f;
-                }
                 if (vis && !value.isZero())
                 {
                     const Emitter *emitter = static_cast<const Emitter *>(dRec.object);

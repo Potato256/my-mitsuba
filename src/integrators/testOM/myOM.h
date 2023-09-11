@@ -6,11 +6,11 @@
 #include <Eigen/Dense>
 MTS_NAMESPACE_BEGIN
 
-#define INT_128
+// #define INT_128
 
 #define OMSIZE 256
 #define OMDEPTH OMSIZE / 32
-#define OMNUMSQRT 16
+#define OMNUMSQRT 4
 #define OMNUM (OMNUMSQRT * OMNUMSQRT)
 
 #define MASK_h27b 0xffffffe0
@@ -102,16 +102,12 @@ public:
         return false;
     }
 
-    inline bool closestHit(int U, Float z, Float &id)
-    {
-        if (U > 0)
-        {
-            if (z > 0)
-            {
+    inline bool closestHit(int U, Float z, Float &id) {
+        if (U > 0) {
+            if (z > 0) {
                 id = 32 - floor(log2(U)) - 0.5;
             }
-            else
-            {
+            else {
                 id = 32 - log2(U & (-U));
             }
             return true;
@@ -119,8 +115,7 @@ public:
         return false;
     }
 
-    inline void setScene(const Scene *scene)
-    {
+    inline void setScene(const Scene *scene) {
         auto meshes = scene->getMeshes();
         for (auto m : meshes)
             setMesh(m);
@@ -379,8 +374,9 @@ public:
     {
         // Vector3 o1_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o1 - m_center), 0) * m_q).v + m_center;
         // Vector3 o2_aligned = (Quaternion(-m_q.v, m_q.w) * Quaternion(Vector(o2 - m_center), 0) * m_q).v + m_center;
-        Float length = (o2 - o1).length();
-        if(dot(m_dir, o2 - o1) < 0)
+        Vector3f o21 = o2 - o1;
+        Float length = o21.length();
+        if(dot(m_dir, o21) < 0)
             length = -length;
         // Point3 dir1 = o1 - m_center;
         // Point3 dir2 = o2 - m_center;
@@ -401,7 +397,7 @@ public:
         Float y1 = (o1_aligned.y - m_AABB.min.y) * m_gridSizeRecp + Epsilon;
         int x = (int)floor(x1);
         int y = (int)floor(y1);
-        if (!check(x, y, 0))
+        if (x < 0 || x > omSize || y < 0 || y > omSize)
             return true;
         int z1 = (int)floor((o1_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
         int z2 = (int)floor((o2_aligned.z - m_AABB.min.z) * m_gridSizeRecp + Epsilon);
@@ -433,19 +429,15 @@ public:
         int r1 = z1 & MASK_l7b;
         int r2 = 127 - z2 & MASK_l7b;
 
-        if (p1 == p2)
-        {
+        if (p1 == p2) {
             __m128i v128 = _mm_load_si128((__m128i *)bom128[x][y] + p1);
             int k1 = r1 >> 5;
             int k2 = (127 - r2) >> 5;
             r1 = r1 & MASK_l5b;
             r2 = r2 & MASK_l5b;
-            if (k1 == k2)
-            {
+            if (k1 == k2) {
                 return (((v128.m128i_i32[k1] >> r1) << (r1 + r2)) == 0);
-            }
-            else
-            {
+            } else {
                 if (v128.m128i_i32[k1] >> r1 != 0)
                     return false;
                 for (int i = k1 + 1; i < k2; i++)
@@ -456,9 +448,7 @@ public:
                 if (v128.m128i_i32[k2] << r2 != 0)
                     return false;
             }
-        }
-        else
-        {
+        } else {
             __m128i v128 = _mm_load_si128((__m128i *)bom128[x][y] + p1);
             int k1 = r1 >> 5;
             int k2 = (127 - r2) >> 5;
@@ -508,23 +498,17 @@ public:
         Float y = uv.y * 2 - 1;
         Float phi, r;
         if (x > -y)
-            if (x > y)
-            {
+            if (x > y) {
                 r = x;
                 phi = (M_PI / 4) * (y / x);
-            }
-            else
-            {
+            } else {
                 r = y;
                 phi = (M_PI / 4) * (2 - x / y);
             }
-        else if (x < y)
-        {
+        else if (x < y) {
             r = -x;
             phi = (M_PI / 4) * (4 + y / x);
-        }
-        else
-        {
+        } else {
             r = -y;
             if (y != 0)
                 phi = (M_PI / 4) * (6 - x / y);
@@ -545,8 +529,7 @@ public:
         // SLog(EDebug, "q %f %f %f %f", q.v.x, q.v.y, q.v.z, q.w);
 
         for (int x = 0; x < omSize; x++)
-            for (int y = 0; y < omSize; y++)
-            {
+            for (int y = 0; y < omSize; y++) {
                 Float radiu = Float(omSize) / 2.0f;
                 Vector3 x_start(Float(x - radiu), Float(y - radiu), 0.5f - radiu);
                 Vector3 x_end(Float(x - radiu), Float(y - radiu), radiu - 0.5f);
@@ -554,21 +537,18 @@ public:
                 Vector3 x_start_rot = omarray->m_q.toTransform()(x_start) + Vector3(radiu);
                 Vector3 x_end_rot = omarray->m_q.toTransform()(x_end) + Vector3(radiu);
                 Vector3 v_step = (x_end_rot - x_start_rot) / Float(omSize - 1);
-                for (int i = 0; i < omSize; i++)
-                {
+                for (int i = 0; i < omSize; i++) {
                     int base_x = (int)floor(x_start_rot.x + Epsilon);
                     int base_y = (int)floor(x_start_rot.y + Epsilon);
                     int base_z = (int)floor(x_start_rot.z + Epsilon);
                     // SLog(EDebug, "base %d %d %d", base_x, base_y, base_z);
-                    if (check(base_x, base_y, base_z) && get(base_x, base_y, base_z))
-                    {
+                    if (check(base_x, base_y, base_z) && get(base_x, base_y, base_z)) {
                         setArray(omarray->bom[x][y], x, y, i);
                     }
                     x_start_rot += v_step;
                 }
 
-                for (int i = 0; i < omDepth / 4; i++)
-                {
+                for (int i = 0; i < omDepth / 4; i++) {
                     omarray->bom128[x][y][i] = _mm_set_epi32(omarray->bom[x][y][i * 4 + 3], omarray->bom[x][y][i * 4 + 2], omarray->bom[x][y][i * 4 + 1], omarray->bom[x][y][i * 4]);
                 }
             }
@@ -589,8 +569,7 @@ public:
     {
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
-                for (int k = 0; k < omSize; ++k)
-                {
+                for (int k = 0; k < omSize; ++k) {
                     if ((i + j + k) & 1)
                         set(i, j, k);
                 }
@@ -601,15 +580,14 @@ public:
         int c = omSize / 2;
         for (int i = 0; i < omSize; ++i)
             for (int j = 0; j < omSize; ++j)
-                for (int k = 0; k < omSize; ++k)
-                {
+                for (int k = 0; k < omSize; ++k) {
                     int r2 = (i - c) * (i - c) + (j - c) * (j - c) + (k - c) * (k - c);
                     if (r2 < omSize * omSize / 16)
                         set(i, j, k);
                 }
     }
 
-    static inline int nearestOMindex(Vector3 d)
+    static inline int nearestOMindex(Vector3& d)
     {
         if (d.z < 0)
             d = -d;
@@ -619,6 +597,23 @@ public:
         if (uv.y > 0.999999)
             uv.y = 0.999999;
         return int(floor(uv.x * OMNUMSQRT)) * OMNUMSQRT + int(floor(uv.y * OMNUMSQRT));
+    }
+
+    static inline int nearestOMindexSimple(Vector3& d)
+    {
+        float u, v;
+        d = d.z < 0 ? -d : d;
+        
+        u = d.y > 0 ? acos(d.x) * INV_TWOPI : 1 - acos(d.x) * INV_TWOPI;
+        // u = 0;
+        v = d.z;
+        
+        u = u > 0.999999 ? 0.999999 : u;
+        // u = u < 0 ? 0 : u;
+        v = v > 0.999999 ? 0.999999 : v;
+        // v = v < 0 ? 0 : v;
+        
+        return int(floor(u * OMNUMSQRT)) * OMNUMSQRT + int(floor(v * OMNUMSQRT));
     }
 
     std::string toString() const
