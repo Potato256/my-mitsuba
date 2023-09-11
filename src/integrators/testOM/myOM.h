@@ -604,9 +604,8 @@ public:
     {
         if (d.z < 0)
             d = -d;
-        Point2 uv = direct2uv(d);
-        // float k = atan2(uv.x,uv.y);
-        /* 16ns */
+        Point2 uv;
+        direct2uv(d, uv);
         if (uv.x > 0.999999)
             uv.x = 0.999999;
         if (uv.y > 0.999999)
