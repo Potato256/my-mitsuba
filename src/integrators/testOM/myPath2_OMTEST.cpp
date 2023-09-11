@@ -407,15 +407,17 @@ public:
                 Spectrum value = scene->sampleEmitterDirect(dRec, sampler->next2D(), false);
                 Point3f src = its.p + its.shFrame.n * 0.5;
                 int id = 0;
-                id = OM::nearestOMindex(dRec.d);
+                bool vis = false;
                 // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
-                bool vis = roma[id].Visible(src, dRec.p);
-                for (int i = 0; i < shadowTest; i++){
+                for (int i = 0; i <= shadowTest; i++){
                     int id = OM::nearestOMindex(dRec.d);
+                    // float pp = atan2(dRec.d.x, dRec.d.z);
+                    id = 0;
+                    /* 21ns */
                     vis = roma[id].Visible(src, dRec.p);
                 }
                 if (cNum)
-                    *cNum += 1.0f + shadowTest;
+                    *cNum += 1.0f+shadowTest;
 
                 if (vis && !value.isZero())
                 {
