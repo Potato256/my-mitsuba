@@ -419,26 +419,6 @@ public:
                 if (cNum)
                     *cNum += 1.0f+shadowTest;
 
-                int id = OM::nearestOMindex(dRec.d);
-                if (id < 0 || id >= OMNUM)
-                {
-                    SLog(EError, "id error: %d\n", id);
-                }
-                bool vis = false;
-                if(depth == -10)
-                {
-                    value = scene->sampleEmitterDirect(dRec, sampler->next2D());
-                    vis = true;
-                } else {
-                    // bool vis = roma[id].visibilityBOM(its.p + its.shFrame.n * 0.5, dRec.p);
-                    bool vis = roma[id].Visible(its.p + its.shFrame.n * 0.5, dRec.p);
-                    for (int i = 0; i < shadowTest; i++){
-                        int id = OM::nearestOMindex(dRec.d);
-                        //vis |= roma[id].Visible(its.p + its.shFrame.n * (0.5+0.001*i), dRec.p);
-                    }
-                    if(cNum)
-                        *cNum += shadowTest + 1.0f;
-                }
 
                 if (vis && !value.isZero())
                 {
